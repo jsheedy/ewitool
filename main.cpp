@@ -44,11 +44,11 @@ int main(int argc, char *argv[])
 			argStr = app.argv()[arg];
 			if (argStr.compare( "--help" ) == 0) {
 				cout << "\nUsage: EWItool [options] [file]\n\
-						Options:\n\
-						--help                     This help\n\
-						--verbose                  Be a lot more verbose in the console while EWItool is running\n\
-						\n\
-						For more information please visit http://ewitool.sourceforge.net/\n";
+Options:\n\
+--help                     This help\n\
+--verbose                  Be a lot more verbose in the console while EWItool is running\n\
+\n\
+For more information please visit http://code.google.com/p/ewitool/ \n";
 				exit(0);
 			}
 			if (argStr.compare( "--verbose" ) == 0) { main_midi_data->verboseMode = TRUE; continue; }
