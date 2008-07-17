@@ -18,6 +18,8 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <cstdlib>
+#include <ctime>
 #include <iostream>
 using namespace std;
 
@@ -56,10 +58,12 @@ MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Q
 	connect(actionFetch_All_Patches, SIGNAL(triggered()), this, SLOT(fetchAllPatches()));
 	connect(action_About, SIGNAL(triggered()), this, SLOT(about()));
 
-	setupPatchTab();
-	setupLibraryTab();
+	connect( mainTabSet, SIGNAL( currentChanged( int ) ), this, SLOT( tabChanged( int ) ) );
+	
 	setupEWItab();
 	patch_tab->setEnabled( false );
+	setupPatchTab();
+	setupLibraryTab();
 }
 
 
@@ -92,6 +96,32 @@ void MainWindow::loadSettings() {
 		if (settings.contains( "MIDI/InClient" ))
 			mididata->connectInput( settings.value("MIDI/InClient").toInt(), settings.value("MIDI/InPort").toInt() );
 	}
+}
+
+// tabSet handlers...
+
+void MainWindow::tabChanged( int new_tab ) {
+	// conextualise the menus
+	switch ( new_tab ) {
+		case LIBRARY_TAB:
+			action_Import->setEnabled( true );
+			actionSave_As->setEnabled( false );
+			actionPrint->setEnabled( false );
+			break;
+		case EWI_TAB:
+			action_Import->setEnabled( false );
+			actionSave_As->setEnabled( true );
+			actionPrint->setEnabled( true );
+			break;
+		case PATCH_TAB:
+			action_Import->setEnabled( false );
+			actionSave_As->setEnabled( true );
+			actionPrint->setEnabled( true );
+			break;
+		default:
+			cerr << "Oops - unexpected tab change signal";
+	}
+	
 }
 
 // handlers fror the top-level menu items
@@ -138,7 +168,7 @@ void MainWindow::import() {
 	}
 	
 	// write new patchset to disk
-	QFile outfile( libraryLocation + sname );
+	QFile outfile( libraryLocation + "/" + sname );
 	if (!outfile.open(QFile::WriteOnly)) {
 		QMessageBox::warning(this, "EWItool",
 							 tr("Cannot write file %1:\n%2.")
@@ -174,14 +204,14 @@ void MainWindow::print() {
 }
 
 void MainWindow::quit() {
-	exit( 0 );
+	qApp->quit();
 }
 
 void MainWindow::about() {
 	QMessageBox::about(this,  
 					   "EWItool",
 					   "EWItool" "\n\n"
-						"Version: 0.1\n"
+						"Version: 0.2\n"
 						"(c) 2008 Steve Merrony" );
 }
 
@@ -342,7 +372,10 @@ void MainWindow::setupPatchTab() {
 	connect(copyCurrent_pushButton, SIGNAL(clicked()), this, SLOT(saveCurrentPatchAs()));
 	connect(saveCurrent_pushButton, SIGNAL(clicked()), this, SLOT(saveCurrentPatch()));
 	connect(revert_pushButton, SIGNAL(clicked()), this, SLOT(revertPatch()));
+	connect(specialCurrent_comboBox, SIGNAL( currentIndexChanged(int) ), this, SLOT(specialActionChosen(int)));
 	
+	// init the random # generator
+	srand( time( 0 ) );
 }
 
 void MainWindow::setupLibraryTab() {
@@ -538,6 +571,16 @@ void MainWindow::fetchAllPatches() {
 									this);
 	
 	progressDialog.setWindowTitle(tr("Fetching Patches"));
+	
+#ifdef Q_WS_WIN
+	// on win32 we'd better re-open the port if already open (to feed it more buffers...)
+	if (mididata->connectedInPort != -1) {
+		int ip = mididata->connectedInPort;
+		mididata->disconnectInput();
+		mididata->connectInput( 0, ip );
+	}
+#endif
+	
 	
 	mainTabSet->setCurrentWidget( EWI_tab );
 	mididata->last_patch_loaded = 0;
@@ -975,6 +1018,346 @@ void MainWindow::changeDial( int nl ) {
 	cerr << "Oops - unhandled change for dial\n";
 }
 
+void MainWindow::specialActionChosen( int chosen_index ) {
+	
+	switch (chosen_index) {
+		case 0: break;
+		case 1:		// Default patch
+			defaultPatch();
+			break;
+		case 2:		// Make Dry
+			makeDry();
+			break;
+		case 3:		// Remove Noise
+			deNoise();
+			break;
+		case 4:
+			randomisePatch();
+			break;
+		case 5:
+			randomPatch();
+			break;
+		default:
+			cerr << "Unexpected Special... action index: " << chosen_index << endl;
+	}
+	
+	// reset widget now done
+	specialCurrent_comboBox->setCurrentIndex( 0 );
+}
+
+void MainWindow::defaultPatch() {
+	// just a plain triangle wave @ 75% volume
+	osc1_octave_comboBox->setCurrentIndex( 2 );
+	osc1_semitone_comboBox->setCurrentIndex( 12 );
+	osc1_fine_dial->setValue( 64 );
+	osc1_beat_dial->setValue( 64 );
+	osc1_saw_verticalSlider->setValue( 0 );
+	osc1_tri_verticalSlider->setValue( 127 );
+	osc1_sqr_verticalSlider->setValue( 0 );
+	osc1_pulseWidth_dial->setValue( 64 );
+	osc1_PWMfreq_dial->setValue( 0 );
+	osc1_PWMdepth_dial->setValue( 0 );
+	osc1_sweepTime_dial->setValue( 0 );
+	osc1_sweepDepth_dial->setValue( 64 );
+	osc1_breathAttain_dial->setValue( 0 );
+	osc1_breathDepth_dial->setValue( 0 );
+	osc1_breathThresh_dial->setValue( 0 );
+	osc1_breathCurve_dial->setValue( 64 );
+	osc1_level_verticalSlider->setValue( 96 );
+			// osc2 silent
+	xfade_checkBox->setCheckState( Qt::Unchecked );
+	osc2_octave_comboBox->setCurrentIndex( 2 );
+	osc2_semitone_comboBox->setCurrentIndex( 12 );
+	osc2_fine_dial->setValue( 64 );
+	osc2_beat_dial->setValue( 64 );
+	osc2_saw_verticalSlider->setValue( 0 );
+	osc2_tri_verticalSlider->setValue( 0 );
+	osc2_sqr_verticalSlider->setValue( 0 );
+	osc2_pulseWidth_dial->setValue( 64 );
+	osc2_PWMfreq_dial->setValue( 0 );
+	osc2_PWMdepth_dial->setValue( 0 );
+	osc2_sweepTime_dial->setValue( 0 );
+	osc2_sweepDepth_dial->setValue( 64 );
+	osc2_breathAttain_dial->setValue( 0 );
+	osc2_breathDepth_dial->setValue( 0 );
+	osc2_breathThresh_dial->setValue( 0 );
+	osc2_breathCurve_dial->setValue( 64 );
+	osc2_level_verticalSlider->setValue( 0 );
+			// no filtering
+	formantFilter_comboBox->setCurrentIndex( 0 );
+	keyTrigger_comboBox->setCurrentIndex( 1 );
+	// 
+	oscFilterLink_comboBox->setCurrentIndex( 2 );
+	oscfilter1_mode_comboBox->setCurrentIndex( 4 ); // off
+	oscfilter1_freq_horizontalSlider->setValue( 0 );
+	oscfilter1_Q_dial->setValue( 5 );
+	oscfilter1_keyFollow_dial->setValue( 64 );
+	oscfilter1_breathMod_dial->setValue( 0 );
+	oscfilter1_breathCurve_dial->setValue( 64 );
+	oscfilter1_LFOfreq_dial->setValue( 0 );
+	oscfilter1_LFOdepth_dial->setValue( 0 );
+	oscfilter1_LFObreath_dial->setValue( 64 );
+	oscfilter1_LFOthreshold_dial->setValue( 0 );
+	oscfilter1_sweepTime_dial->setValue( 0 );
+	oscfilter1_sweepDepth_dial->setValue( 64 );
+			
+	oscfilter2_mode_comboBox->setCurrentIndex( 4 );
+	oscfilter2_freq_horizontalSlider->setValue( 0 );
+	oscfilter2_Q_dial->setValue( 5 );
+	oscfilter2_keyFollow_dial->setValue( 64 );
+	oscfilter2_breathMod_dial->setValue( 0 );
+	oscfilter2_breathCurve_dial->setValue( 64 );
+	oscfilter2_LFOfreq_dial->setValue( 0 );
+	oscfilter2_LFOdepth_dial->setValue( 0 );
+	oscfilter2_LFObreath_dial->setValue( 64 );
+	oscfilter2_LFOthreshold_dial->setValue( 0 );
+	oscfilter2_sweepTime_dial->setValue( 0 );
+	oscfilter2_sweepDepth_dial->setValue( 64 );
+	
+	makeDry();
+	deNoise();		
+	// sensible volumes
+	ampLevel_verticalSlider->setValue( 96 );
+	octaveLevel_verticalSlider->setValue( 50 );	
+}
+
+void MainWindow::makeDry() {
+	chorusSwitch_checkBox->setCheckState( Qt::Unchecked );
+	chorusDelay1_dial->setValue( 0 );
+	chorusModLev1_dial->setValue( 0 );
+	chorusWetLev1_dial->setValue( 0 );
+	chorusDelay2_dial->setValue( 0 );
+	chorusModLev2_dial->setValue( 0 );
+	chorusWetLev2_dial->setValue( 0 );
+	chorusDryLevel_dial->setValue( 64 );
+	chorusFeedback_dial->setValue( 0 );
+	chorusLFOfreq_horizontalSlider->setValue( 0 );
+	delayTime_dial->setValue( 0 );
+	delayDamp_dial->setValue( 0 );
+	delayFeedback_dial->setValue( 0 );
+	delayLevel_verticalSlider->setValue( 0 );
+	reverbTime_dial->setValue( 0 );
+	reverbDamp_dial->setValue( 0 );
+	reverbDensity_dial->setValue( 0 );
+	reverbLevel_verticalSlider->setValue( 0 );
+}
+
+void MainWindow::deNoise() {
+	noiseTime_dial->setValue( 0 );
+	noiseBreath_dial->setValue( 0 );
+	noiseLevel_verticalSlider->setValue( 0 );
+	noiseFilterLink_comboBox->setCurrentIndex( 2 );
+	noisefilter1_mode_comboBox->setCurrentIndex( 4 );
+	noisefilter1_freq_horizontalSlider->setValue( 0 );
+	noisefilter1_Q_dial->setValue( 5 );
+	noisefilter1_keyFollow_dial->setValue( 64 );
+	noisefilter1_breathMod_dial->setValue( 0 );
+	noisefilter1_breathCurve_dial->setValue( 64 );
+	noisefilter1_LFOfreq_dial->setValue( 0 );
+	noisefilter1_LFOdepth_dial->setValue( 0 );
+	noisefilter1_LFObreath_dial->setValue( 64 );
+	noisefilter1_LFOthreshold_dial->setValue( 0 );
+	noisefilter1_sweepTime_dial->setValue( 0 );
+	noisefilter1_sweepDepth_dial->setValue( 64 );
+	noisefilter2_mode_comboBox->setCurrentIndex( 4 );
+	noisefilter2_freq_horizontalSlider->setValue( 0 );
+	noisefilter2_Q_dial->setValue( 5 );
+	noisefilter2_keyFollow_dial->setValue( 64 );
+	noisefilter2_breathMod_dial->setValue( 0 );
+	noisefilter2_breathCurve_dial->setValue( 64 );
+	noisefilter2_LFOfreq_dial->setValue( 0 );
+	noisefilter2_LFOdepth_dial->setValue( 0 );
+	noisefilter2_LFObreath_dial->setValue( 64 );
+	noisefilter2_LFOthreshold_dial->setValue( 0 );
+	noisefilter2_sweepTime_dial->setValue( 0 );
+	noisefilter2_sweepDepth_dial->setValue( 64 );
+}
+
+void MainWindow::randomPatch() {
+	
+	osc1_octave_comboBox->setCurrentIndex( 2 );		// we'll keep the base octave and semitone standard (8')
+	osc1_semitone_comboBox->setCurrentIndex( 12 );
+	osc1_fine_dial->setValue( randBetween( 0, 127 ) );
+	osc1_beat_dial->setValue( randBetween( 0, 127 ) );
+	osc1_saw_verticalSlider->setValue( randBetween( 0, 127 ) );
+	osc1_tri_verticalSlider->setValue( randBetween( 0, 127 ) );
+	osc1_sqr_verticalSlider->setValue( randBetween( 0, 127 ) );
+	osc1_pulseWidth_dial->setValue( randBetween( 0, 127 ) );
+	osc1_PWMfreq_dial->setValue( randBetween( 0, 127 ) );
+	osc1_PWMdepth_dial->setValue( randBetween( 0, 127 ) );
+	osc1_sweepTime_dial->setValue( randBetween( 0, 127 ) );
+	osc1_sweepDepth_dial->setValue( randBetween( 0, 127 ) );
+	osc1_breathAttain_dial->setValue( randBetween( 0, 127 ) );
+	osc1_breathDepth_dial->setValue( randBetween( 0, 127 ) );
+	osc1_breathThresh_dial->setValue( randBetween( 0, 127 ) );
+	osc1_breathCurve_dial->setValue( randBetween( 0, 127 ) );
+	osc1_level_verticalSlider->setValue( randBetween( 48, 127 ) );  // we want some volume
+
+	if (randBetween( 0, 1) == 0)
+		xfade_checkBox->setCheckState( Qt::Unchecked );
+	else
+		xfade_checkBox->setCheckState( Qt::Checked );
+	
+	osc2_octave_comboBox->setCurrentIndex( randBetween( 0, 4 ) );
+	osc2_semitone_comboBox->setCurrentIndex( 12 );		//maybe keep this sane for now
+	osc2_fine_dial->setValue( randBetween( 0, 127 ) );
+	osc2_beat_dial->setValue( randBetween( 0, 127 ) );
+	osc2_saw_verticalSlider->setValue( randBetween( 0, 127 ) );
+	osc2_tri_verticalSlider->setValue( randBetween( 0, 127 ) );
+	osc2_sqr_verticalSlider->setValue( randBetween( 0, 127 ) );
+	osc2_pulseWidth_dial->setValue( randBetween( 0, 127 ) );
+	osc2_PWMfreq_dial->setValue( randBetween( 0, 127 ) );
+	osc2_PWMdepth_dial->setValue( randBetween( 0, 127 ) );
+	osc2_sweepTime_dial->setValue( randBetween( 0, 127 ) );
+	osc2_sweepDepth_dial->setValue( randBetween( 0, 127 ) );
+	osc2_breathAttain_dial->setValue( randBetween( 0, 127 ) );
+	osc2_breathDepth_dial->setValue( randBetween( 0, 127 ) );
+	osc2_breathThresh_dial->setValue( randBetween( 0, 127 ) );
+	osc2_breathCurve_dial->setValue( randBetween( 0, 127 ) );
+	osc2_level_verticalSlider->setValue( randBetween( 0, 127 ) );  
+	
+	formantFilter_comboBox->setCurrentIndex( randBetween( 0, 2 ) );
+	keyTrigger_comboBox->setCurrentIndex( randBetween( 0, 1 ) );
+	// 
+	oscFilterLink_comboBox->setCurrentIndex( randBetween( 0, 2 ) );
+	
+	oscfilter1_mode_comboBox->setCurrentIndex( randBetween( 0, 4 ) ); 
+	oscfilter1_freq_horizontalSlider->setValue( randBetween( 0, 127 ) );
+	oscfilter1_Q_dial->setValue( randBetween( 5, 127 ) );
+	oscfilter1_keyFollow_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter1_breathMod_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter1_breathCurve_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter1_LFOfreq_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter1_LFOdepth_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter1_LFObreath_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter1_LFOthreshold_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter1_sweepTime_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter1_sweepDepth_dial->setValue( randBetween( 0, 127 ) );
+			
+	oscfilter2_mode_comboBox->setCurrentIndex( randBetween( 0, 4 ) ); 
+	oscfilter2_freq_horizontalSlider->setValue( randBetween( 0, 127 ) );
+	oscfilter2_Q_dial->setValue( randBetween( 5, 127 ) );
+	oscfilter2_keyFollow_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter2_breathMod_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter2_breathCurve_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter2_LFOfreq_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter2_LFOdepth_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter2_LFObreath_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter2_LFOthreshold_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter2_sweepTime_dial->setValue( randBetween( 0, 127 ) );
+	oscfilter2_sweepDepth_dial->setValue( randBetween( 0, 127 ) );
+	
+	if (randBetween( 0, 1) == 0)
+		chorusSwitch_checkBox->setCheckState( Qt::Unchecked );
+	else
+		chorusSwitch_checkBox->setCheckState( Qt::Checked );
+	chorusDelay1_dial->setValue( randBetween( 0, 127 ) );
+	chorusModLev1_dial->setValue( randBetween( 0, 127 ) );
+	chorusWetLev1_dial->setValue( randBetween( 0, 127 ) );
+	chorusDelay2_dial->setValue( randBetween( 0, 127 ) );
+	chorusModLev2_dial->setValue( randBetween( 0, 127 ) );
+	chorusWetLev2_dial->setValue( randBetween( 0, 127 ) );
+	chorusDryLevel_dial->setValue( randBetween( 0, 127 ) );
+	chorusFeedback_dial->setValue( randBetween( 0, 127 ) );
+	chorusLFOfreq_horizontalSlider->setValue( randBetween( 0, 127 ) );
+	delayTime_dial->setValue( randBetween( 0, 127 ) );
+	delayDamp_dial->setValue( randBetween( 0, 127 ) );
+	delayFeedback_dial->setValue( randBetween( 0, 127 ) );
+	delayLevel_verticalSlider->setValue( randBetween( 0, 127 ) );
+	reverbTime_dial->setValue( randBetween( 0, 127 ) );
+	reverbDamp_dial->setValue( randBetween( 0, 127 ) );
+	reverbDensity_dial->setValue( randBetween( 0, 127 ) );
+	reverbLevel_verticalSlider->setValue( randBetween( 0, 127 ) );
+}
+
+void MainWindow::randomisePatch() {
+	
+	//sc1_octave_comboBox->setCurrentIndex( 2 );		// we'll keep the base octave and semitone standard (8')
+	//osc1_semitone_comboBox->setCurrentIndex( 12 );
+	osc1_fine_dial->setValue( randNear( 0, 127, osc1_fine_dial->value() ) );
+	osc1_beat_dial->setValue( randNear( 0, 127, osc1_beat_dial->value() ) );
+	osc1_saw_verticalSlider->setValue( randNear( 0, 127, osc1_saw_verticalSlider->value() ) );
+	osc1_tri_verticalSlider->setValue( randNear( 0, 127, osc1_tri_verticalSlider->value() ) );
+	osc1_sqr_verticalSlider->setValue( randNear( 0, 127, osc1_sqr_verticalSlider->value() ) );
+	osc1_pulseWidth_dial->setValue( randNear( 0, 127, osc1_pulseWidth_dial->value() ) );
+	osc1_PWMfreq_dial->setValue( randNear( 0, 127, osc1_PWMfreq_dial->value() ) );
+	osc1_PWMdepth_dial->setValue( randNear( 0, 127, osc1_PWMdepth_dial->value() ) );
+	osc1_sweepTime_dial->setValue( randNear( 0, 127, osc1_sweepTime_dial->value() ) );
+	osc1_sweepDepth_dial->setValue( randNear( 0, 127, osc1_sweepDepth_dial->value() ) );
+	osc1_breathAttain_dial->setValue( randNear( 0, 127, osc1_breathAttain_dial->value() ) );
+	osc1_breathDepth_dial->setValue( randNear( 0, 127, osc1_breathDepth_dial->value() ) );
+	osc1_breathThresh_dial->setValue( randNear( 0, 127, osc1_breathThresh_dial->value() ) );
+	osc1_breathCurve_dial->setValue( randNear( 0, 127, osc1_breathCurve_dial->value() ) );
+	osc1_level_verticalSlider->setValue( randNear( 48, 127, osc1_level_verticalSlider->value() ) );  // we want some volume
+
+	//osc2_octave_comboBox->setCurrentIndex( randNear( 0, 4 ) );
+	//osc2_semitone_comboBox->setCurrentIndex( 12 );		//maybe keep this sane for now
+	osc2_fine_dial->setValue( randNear( 0, 127, osc2_fine_dial->value() ) );
+	osc2_beat_dial->setValue( randNear( 0, 127, osc2_beat_dial->value() ) );
+	osc2_saw_verticalSlider->setValue( randNear( 0, 127, osc2_saw_verticalSlider->value() ) );
+	osc2_tri_verticalSlider->setValue( randNear( 0, 127, osc2_tri_verticalSlider->value() ) );
+	osc2_sqr_verticalSlider->setValue( randNear( 0, 127, osc2_sqr_verticalSlider->value() ) );
+	osc2_pulseWidth_dial->setValue( randNear( 0, 127, osc2_pulseWidth_dial->value() ) );
+	osc2_PWMfreq_dial->setValue( randNear( 0, 127, osc2_PWMfreq_dial->value() ) );
+	osc2_PWMdepth_dial->setValue( randNear( 0, 127, osc2_PWMdepth_dial->value() ) );
+	osc2_sweepTime_dial->setValue( randNear( 0, 127, osc2_sweepTime_dial->value() ) );
+	osc2_sweepDepth_dial->setValue( randNear( 0, 127, osc2_sweepDepth_dial->value() ) );
+	osc2_breathAttain_dial->setValue( randNear( 0, 127, osc2_breathAttain_dial->value() ) );
+	osc2_breathDepth_dial->setValue( randNear( 0, 127, osc2_breathDepth_dial->value() ) );
+	osc2_breathThresh_dial->setValue( randNear( 0, 127, osc2_breathThresh_dial->value() ) );
+	osc2_breathCurve_dial->setValue( randNear( 0, 127, osc2_breathCurve_dial->value() ) );
+	osc2_level_verticalSlider->setValue( randNear( 48, 127, osc2_level_verticalSlider->value() ) );
+	
+	//formantFilter_comboBox->setCurrentIndex( randNear( 0, 2 ) );
+	//keyTrigger_comboBox->setCurrentIndex( randNear( 0, 1 ) );
+	// 
+	//oscFilterLink_comboBox->setCurrentIndex( randNear( 0, 2 ) );
+	
+	//oscfilter1_mode_comboBox->setCurrentIndex( randNear( 0, 4 ) ); 
+	oscfilter1_freq_horizontalSlider->setValue( randNear( 0, 127, oscfilter1_freq_horizontalSlider->value() ) );
+	oscfilter1_Q_dial->setValue( randNear( 5, 127, oscfilter1_Q_dial->value() ) );
+	oscfilter1_keyFollow_dial->setValue( randNear( 0, 127, oscfilter1_keyFollow_dial->value() ) );
+	oscfilter1_breathMod_dial->setValue( randNear( 0, 127, oscfilter1_breathMod_dial->value() ) );
+	oscfilter1_breathCurve_dial->setValue( randNear( 0, 127, oscfilter1_breathCurve_dial->value() ) );
+	oscfilter1_LFOfreq_dial->setValue( randNear( 0, 127, oscfilter1_LFOfreq_dial->value() ) );
+	oscfilter1_LFOdepth_dial->setValue( randNear( 0, 127, oscfilter1_LFOdepth_dial->value() ) );
+	oscfilter1_LFObreath_dial->setValue( randNear( 0, 127, oscfilter1_LFObreath_dial->value() ) );
+	oscfilter1_LFOthreshold_dial->setValue( randNear( 0, 127, oscfilter1_LFOthreshold_dial->value() ) );
+	oscfilter1_sweepTime_dial->setValue( randNear( 0, 127, oscfilter1_sweepTime_dial->value() ) );
+	oscfilter1_sweepDepth_dial->setValue( randNear( 0, 127, oscfilter1_sweepDepth_dial->value() ) );
+			
+	//oscfilter2_mode_comboBox->setCurrentIndex( randNear( 0, 4 ) ); 
+	oscfilter2_freq_horizontalSlider->setValue( randNear( 0, 127, oscfilter2_freq_horizontalSlider->value() ) );
+	oscfilter2_Q_dial->setValue( randNear( 5, 127, oscfilter2_Q_dial->value() ) );
+	oscfilter2_keyFollow_dial->setValue( randNear( 0, 127, oscfilter2_keyFollow_dial->value() ) );
+	oscfilter2_breathMod_dial->setValue( randNear( 0, 127, oscfilter2_breathMod_dial->value() ) );
+	oscfilter2_breathCurve_dial->setValue( randNear( 0, 127, oscfilter2_breathCurve_dial->value() ) );
+	oscfilter2_LFOfreq_dial->setValue( randNear( 0, 127, oscfilter2_LFOfreq_dial->value() ) );
+	oscfilter2_LFOdepth_dial->setValue( randNear( 0, 127, oscfilter2_LFOdepth_dial->value() ) );
+	oscfilter2_LFObreath_dial->setValue( randNear( 0, 127, oscfilter2_LFObreath_dial->value() ) );
+	oscfilter2_LFOthreshold_dial->setValue( randNear( 0, 127, oscfilter2_LFOthreshold_dial->value() ) );
+	oscfilter2_sweepTime_dial->setValue( randNear( 0, 127, oscfilter2_sweepTime_dial->value() ) );
+	oscfilter2_sweepDepth_dial->setValue( randNear( 0, 127, oscfilter2_sweepDepth_dial->value() ) );
+	
+	chorusDelay1_dial->setValue( randNear( 0, 127, chorusDelay1_dial->value() ) );
+	chorusModLev1_dial->setValue( randNear( 0, 127, chorusModLev1_dial->value() ) );
+	chorusWetLev1_dial->setValue( randNear( 0, 127, chorusWetLev1_dial->value() ) );
+	chorusDelay2_dial->setValue( randNear( 0, 127, chorusDelay2_dial->value() ) );
+	chorusModLev2_dial->setValue( randNear( 0, 127, chorusModLev2_dial->value() ) );
+	chorusWetLev2_dial->setValue( randNear( 0, 127, chorusWetLev2_dial->value() ) );
+	chorusDryLevel_dial->setValue( randNear( 0, 127, chorusDryLevel_dial->value() ) );
+	chorusFeedback_dial->setValue( randNear( 0, 127, chorusFeedback_dial->value() ) );
+	chorusLFOfreq_horizontalSlider->setValue( randNear( 0, 127, chorusLFOfreq_horizontalSlider->value() ) );
+	delayTime_dial->setValue( randNear( 0, 127, delayTime_dial->value() ) );
+	delayDamp_dial->setValue( randNear( 0, 127, delayDamp_dial->value() ) );
+	delayFeedback_dial->setValue( randNear( 0, 127, delayFeedback_dial->value() ) );
+	delayLevel_verticalSlider->setValue( randNear( 0, 127, delayLevel_verticalSlider->value() ) );
+	reverbTime_dial->setValue( randNear( 0, 127, reverbTime_dial->value() ) );
+	reverbDamp_dial->setValue( randNear( 0, 127, reverbDamp_dial->value() ) );
+	reverbDensity_dial->setValue( randNear( 0, 127, reverbDensity_dial->value() ) );
+	reverbLevel_verticalSlider->setValue( randNear( 0, 127, reverbLevel_verticalSlider->value() ) );
+}
+
 // library handling...
 
 void MainWindow::setList_chosen(QListWidgetItem *item) {
@@ -1106,81 +1489,87 @@ void MainWindow::deleteClipboard() {
 }
 
 void MainWindow::renameClipboard() {
+
+	if (clipboard.count() > 0 && clipboard_listWidget->currentRow() > -1) {
+
+		// Get new name from the user
+		bool ok;
+
+		QListWidgetItem *curitem = clipboard_listWidget->currentItem();
+		int r = clipboard_listWidget->row (curitem);
+		QString text = curitem->text();
+		QString new_name = QInputDialog::getText (this, "EWItool", "New Patch Name", QLineEdit::Normal, text, &ok);
+
+		if (!ok || new_name.isEmpty()) return;
+
+		new_name = new_name.simplified();
+
+		if (new_name.length() > EWI_PATCHNAME_LENGTH) {
+			QMessageBox::warning (this, tr ("EWItool"),
+			                      tr ("Patch name too long!\nEnter up to %1 characters").arg (EWI_PATCHNAME_LENGTH));
+			renameClipboard();
+		}
+
+		// check name not already on clipboard
+		if (clipboard_listWidget->findItems (new_name, Qt::MatchExactly).count() > 0) {
+			QMessageBox::warning (this, tr ("EWItool"),
+			                      tr ("That name already used on the Clipboard!\nPlease try again"));
+			renameClipboard();
+		}
+
+		// Save patch in the Clipboard
+		clipboard_listWidget->takeItem (r);
+		delete curitem;
+		clipboard_listWidget->insertItem (r, new_name);
+		clipboard_listWidget->setCurrentRow (r);
+		QByteArray ba = new_name.leftJustified (EWI_PATCHNAME_LENGTH, ' ').toLatin1();
+		memcpy ( (void *) &clipboard[r].parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
 		
-	// Get new name from the user
-	bool ok;
-	
-	QListWidgetItem *curitem = clipboard_listWidget->currentItem();
-	int r = clipboard_listWidget->row(curitem);
-	QString text = curitem->text();
-	QString new_name = QInputDialog::getText(this, "EWItool", "New Patch Name", QLineEdit::Normal, text, &ok);
-	if (!ok || new_name.isEmpty()) return;
-	
-	new_name = new_name.simplified();
-	
-	if (new_name.length() > EWI_PATCHNAME_LENGTH ) { 
-		QMessageBox::warning(this, tr("EWItool"),
-							 tr("Patch name too long!\nEnter up to %1 characters").arg( EWI_PATCHNAME_LENGTH ));
-		renameClipboard();
+		saveClipboard();
 	}
-	
-	// check name not already on clipboard
-	if (clipboard_listWidget->findItems( new_name, Qt::MatchExactly ).count() > 0) {
-		QMessageBox::warning(this, tr("EWItool"),
-							 tr("That name already used on the Clipboard!\nPlease try again"));
-		renameClipboard();
-	}
-		
-	// Save patch in the Clipboard
-	
-	clipboard_listWidget->takeItem(r);
-	delete curitem;
-	clipboard_listWidget->insertItem(r, new_name);
-	clipboard_listWidget->setCurrentRow(r);
-	
-	QByteArray ba = new_name.leftJustified( EWI_PATCHNAME_LENGTH, ' ' ).toLatin1();
-	memcpy( (void *) &clipboard[r].parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
-	
-	saveClipboard();
 }
 
 void MainWindow::viewHexClipboard() {
-		
-	const char *raw_patch = &clipboard.at( clipboard_listWidget->currentRow() ).whole_patch[0];
-	QString hex_patch;
 	
-	for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) {
-		hex_patch += QString( "%1 " ).arg( (uint) raw_patch[i], 2, 16, QChar( '0' ) ).right( 3 );
+	if (clipboard.count() > 0 && clipboard_listWidget->currentRow() > -1) {
+		const char *raw_patch = &clipboard.at( clipboard_listWidget->currentRow() ).whole_patch[0];
+		QString hex_patch;
+	
+		for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) {
+			hex_patch += QString( "%1 " ).arg( (uint) raw_patch[i], 2, 16, QChar( '0' ) ).right( 3 );
+		}
+		viewHex_dialog *h = new viewHex_dialog( hex_patch );
+		h->exec();
 	}
-	viewHex_dialog *h = new viewHex_dialog( hex_patch );
-	h->exec();
 }
 
 void MainWindow::exportClipboard() {
 	// exports an item from the Clipboard into the "export" subdir
+	if (clipboard.count() > 0 && clipboard_listWidget->currentRow() > -1) {
 	
-	patch_t e_patch;
+			patch_t e_patch;
 	
-	QString e_name = libraryLocation + EXPORT_DIR + "/" + clipboard_listWidget->currentItem()->text() + LIBRARY_EXTENSION;
-	QFile file(e_name);
-	if (!file.open(QFile::WriteOnly)) {
-		QMessageBox::warning(this, tr("EWItool"),
-							 tr("Cannot write file %1:\n%2.")
-									 .arg(e_name)
-									 .arg(file.errorString()));
-		return;
+		QString e_name = libraryLocation + EXPORT_DIR + "/" + clipboard_listWidget->currentItem()->text() + LIBRARY_EXTENSION;
+		QFile file(e_name);
+		if (!file.open(QFile::WriteOnly)) {
+			QMessageBox::warning(this, tr("EWItool"),
+								 tr("Cannot write file %1:\n%2.")
+										 .arg(e_name)
+										 .arg(file.errorString()));
+			return;
+		}
+	
+		e_patch = clipboard.at( clipboard_listWidget->currentRow() );
+		e_patch.parameters.mode = EWI_EDIT;
+		e_patch.parameters.patch_num = 0x00;
+		
+		QDataStream out(&file);
+		out.writeRawData( e_patch.whole_patch, EWI_PATCH_LENGTH );
+		out.writeRawData( e_patch.whole_patch, EWI_PATCH_LENGTH );
+		QMessageBox::information(this, tr("EWItool"),
+							 	 tr("Patch exported to ") +
+								 e_name );
 	}
-	
-	e_patch = clipboard.at( clipboard_listWidget->currentRow() );
-	e_patch.parameters.mode = EWI_EDIT;
-	e_patch.parameters.patch_num = 0x00;
-	
-	QDataStream out(&file);
-	out.writeRawData( e_patch.whole_patch, EWI_PATCH_LENGTH );
-	out.writeRawData( e_patch.whole_patch, EWI_PATCH_LENGTH );
-	QMessageBox::information(this, tr("EWItool"),
-						 	 tr("Patch exported to ") +
-							 e_name );
 }
 
 void MainWindow::sendLibraryToEWI() {
@@ -1216,3 +1605,26 @@ QString MainWindow::trimPatchName( char *rawName ) {
 	sname.truncate( EWI_PATCHNAME_LENGTH );
 	return sname.trimmed();
 }
+
+int MainWindow::randBetween( int min, int max ) {
+	
+	return min + rand() % (max - min);
+	
+}
+
+int MainWindow::randNear( int min, int max, int currval ) {
+	
+	// a random 10% alteration of the value
+	int newmin = currval - (max/10); 
+	if (newmin < min) newmin = min;
+    if (newmin == max) newmin -= max/10;	
+	
+	int newmax = currval + (max/10);
+	if (newmax > max) newmax = max;
+	if (newmax == min) newmax += max/10;
+	
+	return randBetween( newmin, newmax );
+	
+}
+
+
