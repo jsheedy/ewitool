@@ -35,9 +35,26 @@ midi_data::midi_data() {
 
 
 midi_data::~midi_data() {
+	
 }
 
+#ifdef Q_WS_WIN
+void win32PrintError( const char * prefix, unsigned long err ) {
+	WCHAR   errMsg[120];
+	
+	midiOutGetErrorText (err, &errMsg[0], 120);
+	//cerr << "Error: " << &errMsg[0] <<endl;
+	printf( "%s\t", prefix );
+	wprintf( L"Error: %s \n", errMsg );
+}
+#endif
+
+/**
+ *  This is a no-op in win32 where the program connects directly to the required MIDI ports.
+ *  With ALSA we create our own MIDI ports which can then be connected to the EWI ports
+ */
 void midi_data::createOurMIDIports() {
+#ifdef Q_WS_X11
 	int res;
 	midi_port *ip, *op;
 
@@ -79,16 +96,20 @@ void midi_data::createOurMIDIports() {
 		perror ("create input port");
 		exit (1);
 	}
-
+#endif
 }
 
 void midi_data::sendPanic() {
-
+#ifdef Q_WS_X11
 	snd_seq_event_t ev;
-
 	int rc;
+#endif
+#ifdef Q_WS_WIN
+
+#endif
 
 	for (int mc = 0; mc < 16; mc++) {
+#ifdef Q_WS_X11
 		snd_seq_ev_clear (&ev);
 		snd_seq_ev_set_controller (&ev, mc, MIDI_CTL_ALL_NOTES_OFF,0);
 
@@ -101,17 +122,27 @@ void midi_data::sendPanic() {
 		if (rc < 0) {
 			cout << "Error: sending sequencer controller event (" << snd_strerror (rc) << ")\n";
 		}
+#endif
+#ifdef Q_WS_WIN
+
+#endif	
 	}
 }
 
+/**
+ * Requests a single patch from the EWI and waits for one to be returned.
+ * @param p 
+ * @return 
+ */
 bool midi_data::requestPatch (char p) {
-	snd_seq_event_t ev;
 
-	int rc;
 	char sysex_fetch_patch[] = { 0xf0, 0x47, 0x64, 0x00, 0x40, 0x00, 0xf7 }; // 6th byte is patch #
 
 	sysex_fetch_patch[5] = p;
-
+	
+#ifdef Q_WS_X11
+	int rc;
+	snd_seq_event_t ev;
 	snd_seq_ev_clear (&ev);
 	snd_seq_ev_set_sysex (&ev, 7, (void *) sysex_fetch_patch);
 
@@ -127,7 +158,30 @@ bool midi_data::requestPatch (char p) {
 	}
 
 	snd_seq_drain_output (seq.seq_handle);
+#endif
+#ifdef Q_WS_WIN
+	MIDIHDR     midiHdr;
+	UINT        err;
+	/* Store pointer in MIDIHDR */
+	midiHdr.lpData = &sysex_fetch_patch[0];
+	midiHdr.dwBufferLength = sizeof (sysex_fetch_patch);
+	/* Flags must be set to 0 */
+	midiHdr.dwFlags = 0;
+	/* Prepare the buffer and MIDIHDR */
+	err = midiOutPrepareHeader (seq.outHandle,  &midiHdr, sizeof (MIDIHDR));
+	
+	if (!err) {
+		/* Output the SysEx message */
+		err = midiOutLongMsg (seq.outHandle, &midiHdr, sizeof (MIDIHDR));
+		if (err) win32PrintError( "Sending SysEx", err );
+	
+		/* Unprepare the buffer and MIDIHDR */
+		while (MIDIERR_STILLPLAYING == midiOutUnprepareHeader (seq.outHandle, &midiHdr, sizeof (MIDIHDR))) {
+			Sleep (50);
+		}
+	}
 
+#endif
 	mymutex.lock();  // wait for a SysEx to be returned
 	if (!sysexDone.wait( &mymutex, 3000 )) {  // up to 3 secs
 		// we timed out
@@ -152,7 +206,7 @@ void midi_data::sendLiveControl (int lsb, int msb, int cvalue) {
 }
 
 void midi_data::sendCC (int cc, int val, int ch) {
-	
+#ifdef Q_WS_X11
 	snd_seq_event_t ev;
 	int rc;
 
@@ -170,18 +224,35 @@ void midi_data::sendCC (int cc, int val, int ch) {
 	}
 
 	snd_seq_drain_output (seq.seq_handle);
+#endif
+#ifdef Q_WS_WIN
+	union {
+		DWORD dwData;
+		BYTE  bData[4];
+	} smsg;
+	
+	smsg.bData[0] = 0xB0;
+	smsg.bData[1] = (BYTE) cc;
+	smsg.bData[2] = (BYTE) val;
+	smsg.bData[3] = 0;
+					
+	UINT result = midiOutShortMsg( seq.outHandle, smsg.dwData );
+	if (result != MMSYSERR_NOERROR) win32PrintError( "Sending ShortMsg in sendCC", result );
+#endif
 }
 
 
+/**
+ * Currently only use by sendPatch()
+ * @param sysex 
+ * @param len 
+ */
 void midi_data::sendSysEx (char *sysex, int len) {
-
+#ifdef Q_WS_X11
 	snd_seq_event_t ev;
 	int rc;
 
 	snd_seq_ev_clear (&ev) ;
-	//snd_seq_ev_set_sysex (&ev, len, (void *) sysex);
-
-	// send request
 	snd_seq_ev_set_source (&ev, out_port.my_port);
 	snd_seq_ev_set_subs (&ev);
 	snd_seq_ev_set_direct (&ev);
@@ -193,8 +264,31 @@ void midi_data::sendSysEx (char *sysex, int len) {
 	}
 
 	snd_seq_drain_output (seq.seq_handle);
-
-	 usleep( 250000 );
+	usleep( 250000 );
+#endif
+#ifdef Q_WS_WIN
+	MIDIHDR     midiHdr;
+	UINT        err;
+	/* Store pointer in MIDIHDR */
+	midiHdr.lpData = sysex;
+	midiHdr.dwBufferLength = len;
+	/* Flags must be set to 0 */
+	midiHdr.dwFlags = 0;
+	/* Prepare the buffer and MIDIHDR */
+	err = midiOutPrepareHeader (seq.outHandle,  &midiHdr, sizeof (MIDIHDR));
+	
+	if (!err) {
+		/* Output the SysEx message */
+		err = midiOutLongMsg (seq.outHandle, &midiHdr, sizeof (MIDIHDR));
+		if (err != MMSYSERR_NOERROR) win32PrintError( "Sending SysEx", err );
+	
+		/* Unprepare the buffer and MIDIHDR */
+		while (MIDIERR_STILLPLAYING == midiOutUnprepareHeader (seq.outHandle, &midiHdr, sizeof (MIDIHDR))) {
+			Sleep (50);
+		}
+	}
+	Sleep( 250 );
+#endif
 }
 
 void midi_data::sendPatch (patch_t p, char mode) {
@@ -212,10 +306,7 @@ void midi_data::sendPatch (patch_t p, char mode) {
 }
 
 void midi_data::scanPorts() {
-
-	snd_seq_client_info_t *cinfo;
-	snd_seq_port_info_t *pinfo;
-
+	
 	QString port_name;
 
 	inPortList.clear();
@@ -225,6 +316,10 @@ void midi_data::scanPorts() {
 	outPortClients.clear();
 	outPortPorts.clear();
 	
+#ifdef Q_WS_X11
+	snd_seq_client_info_t *cinfo;
+	snd_seq_port_info_t *pinfo;
+
 	snd_seq_client_info_alloca (&cinfo);
 	snd_seq_port_info_alloca (&pinfo);
 	snd_seq_client_info_set_client (cinfo, -1);
@@ -267,16 +362,47 @@ void midi_data::scanPorts() {
 			} // end while each port
 		} // end-if
 	} // end while each client
+#endif
+#ifdef Q_WS_WIN
+	MIDIOUTCAPS     moc;
+	MIDIINCAPS      mic;
+	unsigned long   iNumDevs, i;
+
+	iNumDevs = midiOutGetNumDevs();
+	for (i = 0; i < iNumDevs; i++)
+	{
+		if (!midiOutGetDevCaps(i, &moc, sizeof(MIDIOUTCAPS)))
+		{
+			port_name = QString( "%1 %2").arg( (int) i ).arg( QString::fromWCharArray(  moc.szPname ) );
+			outPortList.append(port_name);
+			outPortClients.append( 0 );  // no 'clients' on win32
+			outPortPorts.append( i );
+		}
+	}
+
+	iNumDevs = midiInGetNumDevs();
+	for (i = 0; i < iNumDevs; i++)
+	{
+		if (!midiInGetDevCaps(i, &mic, sizeof(MIDIINCAPS)))
+		{
+			port_name = QString( "%1 %2").arg( (int) i ).arg( QString::fromWCharArray(  mic.szPname ) );
+			inPortList.append(port_name);
+			inPortClients.append( 0 );  // no 'clients' on win32
+			inPortPorts.append( i );
+		}
+	}
+#endif
 }
 
 void midi_data::connectOutput( int out_client, int o_port ) {
 	
+	if (connectedOutPort != -1 ) disconnectOutput();
+	
+#ifdef Q_WS_X11
 	snd_seq_addr_t           sender, dest;
 	snd_seq_port_subscribe_t *subs;
 	
 	int err;
-	
-	if (connectedOutPort != -1 ) disconnectOutput();
 	
 	sender.client = seq.my_client;
 	sender.port = out_port.my_port;
@@ -290,9 +416,18 @@ void midi_data::connectOutput( int out_client, int o_port ) {
 	err = snd_seq_subscribe_port(seq.seq_handle, subs);
 	
 	if (err < 0) {
-		cout << "Cannot subscribe output MIDI port: " << snd_strerror(err) << endl;
+		cerr << "Cannot subscribe output MIDI port: " << snd_strerror(err) << endl;
 	}
+#endif
+#ifdef Q_WS_WIN
+	unsigned long result;
 	
+	result = midiOutOpen(&seq.outHandle, o_port, 0, 0, CALLBACK_NULL);
+	if (result)
+		win32PrintError( "There was an error opening the MIDI Out device!", result );
+	if (verboseMode) cout << "Connected to MIDI out port " << o_port << endl;
+	out_client = WIN32_DUMMY_CLIENT;
+#endif
 	connectedOutPort = o_port;
 	connectedOutClient = out_client;
 	
@@ -301,14 +436,65 @@ void midi_data::connectOutput( int out_client, int o_port ) {
 	settings.setValue( "MIDI/OutClient", out_client );
 }
 
+#ifdef Q_WS_WIN
+// this callback method is the win32 equivalent of the midilistener thread
+static void CALLBACK win32MIDIinCallback( HMIDIIN handle, UINT uMsg, DWORD dwInstance, DWORD dwParam1, DWORD dwParam2 ) {
+	
+	LPMIDIHDR       lpMIDIHeader;
+	patch_t			this_patch;
+	int				this_patch_num;
+	midi_data		*mdp = (midi_data *) dwInstance;
+	//cout << "Some MIDI data received..." << endl;
+	//cout << "Connected in port is " << mdp->connectedInPort << endl;
+	switch(uMsg)
+	{
+		// Received some regular MIDI message
+		case MIM_DATA:
+			//cout << "MIM_DATA received"<<endl;
+			break;
+
+		// Received SYSEX
+		case MIM_LONGDATA:
+			if (mdp->verboseMode) cout << "Sysex case triggered" << endl;
+			lpMIDIHeader = (LPMIDIHDR)dwParam1;
+			memcpy( this_patch.whole_patch, (char *) lpMIDIHeader->lpData, EWI_PATCH_LENGTH );
+			
+			// this fragment copied from midilistener.cpp...
+			if (this_patch.parameters.header[3] == 0x7f ) {
+				this_patch_num = ( int ) this_patch.parameters.patch_num++; 
+				memcpy( mdp->patches[this_patch_num].whole_patch, (char *) lpMIDIHeader->lpData, EWI_PATCH_LENGTH );
+				mdp->last_patch_loaded = this_patch_num;
+				if (mdp->verboseMode) cout << "MidiListener: Received " << this_patch_num+1 << " - " << this_patch.parameters.name << "\n";
+			}
+			mdp->mymutex.lock();
+			mdp->sysexDone.wakeAll();
+			mdp->mymutex.unlock();
+			
+			break;
+			
+		// Process other messages.
+
+			case MIM_OPEN:         if (mdp->verboseMode) cout << "MIM_OPEN received"<<endl; break;
+			case MIM_CLOSE:        if (mdp->verboseMode) cout << "MIM_CLOSE received"<<endl; break;
+			case MIM_ERROR:        if (mdp->verboseMode) cout << "MIM_ERROR received"<<endl; break;
+			case MIM_LONGERROR:    if (mdp->verboseMode) cout << "MIM_LONGERROR received"<<endl; break;
+			case MIM_MOREDATA:     if (mdp->verboseMode) cout << "MIM_MOREDATA received"<<endl; break;
+			default: 			   if (mdp->verboseMode) cout << "Unknown trigger received"<<endl;break;
+	}
+	
+}
+#endif
+
+
 void midi_data::connectInput( int in_client, int i_port ) {
 	
+	if (connectedInPort != -1) disconnectInput();
+	
+#ifdef Q_WS_X11
 	snd_seq_addr_t           sender, dest;
 	snd_seq_port_subscribe_t *subs;
 	
 	int err;
-	
-	if (connectedInPort != -1) disconnectInput();
 	
 	sender.client = in_client;
 	sender.port = i_port;
@@ -327,17 +513,56 @@ void midi_data::connectInput( int in_client, int i_port ) {
 	if (err < 0) {
 		cout << "Cannot subscribe input MIDI port: " << snd_strerror(err) << endl;
 	}
+#endif
+
+#ifdef Q_WS_WIN
+	char		*mmsg[WIN32_NUM_BUFS]; 
+	MIDIHDR 	*buf[WIN32_NUM_BUFS];
+	LPMIDIHDR   lpMIDIHeader[WIN32_NUM_BUFS];
 	
+	unsigned long result;
+	
+	//cout << "About to try to open input port " << i_port << endl;
+	result = midiInOpen( (LPHMIDIIN) &seq.inHandle, i_port, (DWORD) win32MIDIinCallback, (DWORD) this, CALLBACK_FUNCTION );
+	if (result == MMSYSERR_NOERROR) {
+		//cout << "Open port for input OK" << endl;
+		if (verboseMode) cout << "Opened MIDI Input port: " << i_port << endl;
+	}
+	else
+	{
+		cerr << "There was an error opening the MIDI In device!" << endl;
+		win32PrintError( "Opening MIDI In", result );
+		exit( -1 );
+	}
+	for (int b = 0; b < WIN32_NUM_BUFS; b++) {
+		mmsg[b] = new char[WIN32_BUF_SIZE];
+		buf[b] = new MIDIHDR;
+		lpMIDIHeader[b] = buf[b];
+		buf[b]->lpData = mmsg[b];
+		buf[b]->dwBufferLength = WIN32_BUF_SIZE;
+		buf[b]->dwFlags = 0;
+	
+		result = midiInPrepareHeader( seq.inHandle, lpMIDIHeader[b], sizeof(MIDIHDR) );
+		if (result != MMSYSERR_NOERROR) { cout << "Error1 preparing header " << result <<endl; win32PrintError( "Preparing header", result ); exit( result ); }
+		result = midiInAddBuffer( seq.inHandle, lpMIDIHeader[b], sizeof(MIDIHDR) );
+		if (result != MMSYSERR_NOERROR) { cout << "Error adding buffer" << endl; win32PrintError( "Adding buffer", result ); exit( result ); }
+	}
+	
+	result = midiInStart( seq.inHandle );
+	if (result != MMSYSERR_NOERROR) { cout << "Error starting input" << endl; win32PrintError( "Starting Input", result ); exit( result ); }
+
+	//cout << "? good to go ? " << endl;
+	in_client = WIN32_DUMMY_CLIENT;
+#endif	
 	connectedInPort = i_port;
 	connectedInClient = in_client;
-	
 	QSettings settings( "EWItool", "EWItool" );
 	settings.setValue( "MIDI/InPort", i_port );
 	settings.setValue( "MIDI/InClient", in_client );
 }
 
 void midi_data::disconnectInput() {
-	
+#ifdef Q_WS_X11
 	snd_seq_port_subscribe_t *pAlsaSubs;
 	snd_seq_addr_t seq_addr;
     int err;
@@ -356,10 +581,23 @@ void midi_data::disconnectInput() {
 	if (err < 0) {
 		cerr << "Cannot unsubscribe input MIDI port: " << snd_strerror(err) << endl;
 	}
+#endif
+#ifdef Q_WS_WIN
+	unsigned long result;
+	
+	//result = midiInReset( seq.inHandle );
+	//if (result != MMSYSERR_NOERROR) win32PrintError( "Resetting Input", result );
+	result = midiInClose( seq.inHandle );
+	if (result != MMSYSERR_NOERROR) win32PrintError( "Closing Input", result );
+	if (verboseMode) cout << "Close MIDI Input port: " << connectedInPort << endl;
+#endif
+	
+	connectedInClient = -1;
+	connectedInPort = -1;
 }
 
 void midi_data::disconnectOutput() {
-	
+#ifdef Q_WS_X11
 	snd_seq_port_subscribe_t *pAlsaSubs;
 	snd_seq_addr_t seq_addr;
 	int err;
@@ -378,6 +616,16 @@ void midi_data::disconnectOutput() {
 	if (err < 0) {
 		cerr << "Cannot unsubscribe output MIDI port: " << snd_strerror(err) << endl;
 	}
+#endif
+#ifdef Q_WS_WIN
+	unsigned long result;
+	
+	result = midiOutClose( seq.outHandle );
+	if (result != MMSYSERR_NOERROR) win32PrintError( "Closing Output", result );
+#endif
+	
+	connectedOutClient = -1;
+	connectedOutPort = -1;
 }
 
 QString midi_data::getPatchName( char *rawName ) {
@@ -386,4 +634,5 @@ QString midi_data::getPatchName( char *rawName ) {
 	sname.truncate( EWI_PATCHNAME_LENGTH );
 	return sname.trimmed();
 }
+
 

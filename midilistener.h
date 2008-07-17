@@ -42,5 +42,4 @@ Q_OBJECT
 		midi_data *midi_data_shr, *tmidi_data;
 
 };
-
 #endif

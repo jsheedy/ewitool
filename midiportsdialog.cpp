@@ -34,12 +34,22 @@ MIDIports_Dialog::MIDIports_Dialog (midi_data *m) : QDialog() {
 	
 	// highlight the currently selected ports
 	for ( int i = 0; i < inPorts_listWidget->count(); i++ ) {
+#ifdef Q_WS_X11
 		if (inPorts_listWidget->item(i)->text().startsWith( QString( "%1:%2" ).arg( m->connectedInClient ).arg( m->connectedInPort ) ) ) {
+#endif
+#ifdef Q_WS_WIN
+		if (inPorts_listWidget->item(i)->text().startsWith( QString( "%1" ).arg( m->connectedInPort ) ) ) {
+#endif
 			inPorts_listWidget->setCurrentRow( i );
 		}
 	}
 	for ( int i = 0; i < outPorts_listWidget->count(); i++ ) {
+#ifdef Q_WS_X11
 		if (outPorts_listWidget->item(i)->text().startsWith( QString( "%1:%2" ).arg( m->connectedOutClient ).arg( m->connectedOutPort ) ) ) {
+#endif
+#ifdef Q_WS_WIN
+		if (outPorts_listWidget->item(i)->text().startsWith( QString( "%1" ).arg( m->connectedOutPort ) ) ) {
+#endif		
 			outPorts_listWidget->setCurrentRow( i );
 		}
 	}

@@ -17,7 +17,7 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
-#include <alsa/asoundlib.h>
+
 #include <iostream>
 using namespace std;
 
@@ -39,8 +39,8 @@ MidiListener::~MidiListener()
 }
 
 void MidiListener::run() {
-	
-	// midi_data *tmidi_data = (midi_data *)mops;
+		
+
 	
 	midi_seq seq;
 	midi_port ip;
@@ -73,8 +73,8 @@ void MidiListener::run() {
 				this_patch_num = ( int ) this_patch.parameters.patch_num++; 
 				memcpy ( tmidi_data->patches[this_patch_num].whole_patch, ( char * ) ev->data.ext.ptr, EWI_PATCH_LENGTH );
 				tmidi_data->last_patch_loaded = this_patch_num;
+				if (tmidi_data->verboseMode) cout << "MidiListener: Received " << this_patch_num+1 << " - " << this_patch.parameters.name << "\n";
 			}
-			if (tmidi_data->verboseMode) cout << "MidiListener: Received " << this_patch_num+1 << " - " << this_patch.parameters.name << "\n";
 			tmidi_data->mymutex.lock();
 			tmidi_data->sysexDone.wakeAll();
 			tmidi_data->mymutex.unlock();
@@ -89,5 +89,12 @@ void MidiListener::run() {
 		snd_seq_free_event( ev );
 	}
 	
+
 }
+
+
+
+
+
+
 
