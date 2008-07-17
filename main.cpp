@@ -19,23 +19,28 @@
  ***************************************************************************/
 #include <QApplication>
 
-//#include "ewitool.h"
-
 #include <iostream>
 using namespace std;
 
 #include "mainwindow.h"
+
+#ifndef Q_WS_WIN
 #include "midilistener.h"
+#endif
+				 
 #include "midi_data.h"
 				 
 int main(int argc, char *argv[])
 {
 	//Q_INIT_RESOURCE(application);
-	  
+#ifdef Q_WS_WIN
+	AllocConsole();
+	freopen("conin$", "r", stdin);
+	freopen("conout$", "w", stdout);
+	freopen("conout$", "w", stderr);
+#endif
 	midi_data *main_midi_data = new midi_data();
-	
 	QString argStr;
-	
 	QApplication app(argc, argv);
 	
 	// handle any arguments passed in
@@ -43,25 +48,27 @@ int main(int argc, char *argv[])
 		for (int arg = 1; arg<app.argc(); arg++) {
 			argStr = app.argv()[arg];
 			if (argStr.compare( "--help" ) == 0) {
-				cout << "\nUsage: EWItool [options] [file]\n\
+				cout << "\nUsage: EWItool [options]\n\
 Options:\n\
---help                     This help\n\
---verbose                  Be a lot more verbose in the console while EWItool is running\n\
+--help       This help\n\
+--verbose    Be a lot more verbose in the console while EWItool is running\n\
 \n\
 For more information please visit http://code.google.com/p/ewitool/ \n";
 				exit(0);
 			}
 			if (argStr.compare( "--verbose" ) == 0) { main_midi_data->verboseMode = TRUE; continue; }
-			
 		}
 	}
 	
+	app.setQuitOnLastWindowClosed( true );
 	MainWindow mw( main_midi_data );
 	mw.show();
 	  
-	//MidiListener *mlThread = new MidiListener( main_midi_data );
+	// On Linux received MIDI data is handled in a separate thread
+#ifdef Q_WS_X11
 	MidiListener *mlThread = new MidiListener( (QObject *) main_midi_data );
 	mlThread->start();
-	  
+#endif
+	
 	return app.exec();
 }
