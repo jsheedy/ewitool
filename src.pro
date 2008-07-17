@@ -1,22 +1,31 @@
 TEMPLATE = app
 CONFIG += warn_on \
-	  thread \
+		  thread \
           qt
 TARGET = ../bin/ewitool
 SOURCES += main.cpp \
 mainwindow.cpp \
- midilistener.cpp \
  midi_data.cpp \
  midiportsdialog.cpp \
  pastepatch_dialog.cpp \
  viewhex_dialog.cpp
+unix {
+ SOURCES += midilistener.cpp
+}
 HEADERS += mainwindow.h \
- midilistener.h \
  midi_data.h \
  midiportsdialog.h \
  pastepatch_dialog.h \
  viewhex_dialog.h
-LIBS += -lasound
+unix {
+ HEADERS += midilistener.h
+}
+unix {
+	LIBS += -lasound
+}
+win32 {
+	LIBS += -lwinmm
+}
 
 FORMS += mainwindow.ui \
  MIDIports_Dialog.ui \
@@ -24,4 +33,6 @@ FORMS += mainwindow.ui \
  viewHex_dialog.ui
 
 RESOURCES -= application.qrc
+
+DISTFILES += ../CHANGES
 
