@@ -20,7 +20,13 @@
 #ifndef MIDI_DATA_H
 #define MIDI_DATA_H
 
+#ifdef Q_WS_X11
 #include <alsa/asoundlib.h>
+#endif
+#ifdef Q_WS_WIN
+#include <windows.h>
+#include <mmsystem.h>
+#endif
 
 #include <QMutex>
 #include <QStringList>
@@ -32,6 +38,11 @@ const int 	EWI_PATCHNAME_LENGTH 	= 32;
 const int 	EWI_SOUNDBANK_HEADER_LENGTH = 904;
 const char 	EWI_EDIT 				= 0x20;
 const char 	EWI_SAVE 				= 0x00;
+#ifdef Q_WS_WIN
+const int   WIN32_DUMMY_CLIENT		= 0;
+const int	WIN32_NUM_BUFS = 500;
+const int	WIN32_BUF_SIZE = 1024;
+#endif
 
 /**
 	@author Steve Merrony
@@ -40,8 +51,14 @@ const char 	EWI_SAVE 				= 0x00;
 {
 	int my_client;
 	int seq_client;
+#ifdef Q_WS_X11
 	snd_seq_t *seq_handle;
 	snd_seq_event_t ev;
+#endif
+#ifdef Q_WS_WIN
+	HMIDIOUT	outHandle;
+	HMIDIIN		inHandle;
+#endif
 } midi_seq;
 
 	typedef struct
@@ -181,9 +198,10 @@ public:
 	void connectInput( int, int );
 	void disconnectInput();
 	void disconnectOutput();
-	
+//#ifdef Q_WS_WIN
+//	void CALLBACK win32MIDIinCallback( HMIDIIN, UINT, DWORD, DWORD, DWORD );
+//#endif
 	QString getPatchName( char * );
-			
 	midi_seq  seq;
 	midi_port inp_port, out_port;
 	
@@ -192,15 +210,14 @@ public:
 	QMutex  mymutex;
 	QWaitCondition sysexDone;
 	
-	int		last_patch_loaded;
-	patch_t patches[EWI_NUM_PATCHES];
+	int			last_patch_loaded;
+	patch_t 	patches[EWI_NUM_PATCHES];
 	
 	QStringList inPortList, outPortList;
 	QList<int>  inPortClients, outPortClients;
 	QList<int>  inPortPorts, outPortPorts;
 	int         connectedInPort, connectedInClient;
 	int         connectedOutPort, connectedOutClient;
-	
 };
 
 #endif
