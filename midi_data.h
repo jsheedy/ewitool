@@ -35,12 +35,16 @@
 const int 	EWI_NUM_PATCHES 		= 100;
 const int 	EWI_PATCH_LENGTH 		= 206;
 const int 	EWI_PATCHNAME_LENGTH 	= 32;
-const int 	EWI_SOUNDBANK_HEADER_LENGTH = 904;
+const int	EWI_SOUNDBANK_MAX_HEADER_LENGTH = 0x450;	// looks safe from observation
+// below is the sequence which appears to start the real body of SQS files, there
+// seem to be various false BODYs before the main one we care about
+const char	EWI_SQS_BODY_START[]	= { 'B', 'O', 'D', 'Y', 0x00, 0x00, 0x50, 0x78, 0xf0, 0x47, 0x64, 0x7f, 0x00, 0x00 };
+const int	EWI_SQS_MAX_HEADER_LENGTH = 0x1000;			// looks ok from observation
 const char 	EWI_EDIT 				= 0x20;
 const char 	EWI_SAVE 				= 0x00;
 #ifdef Q_WS_WIN
 const int   WIN32_DUMMY_CLIENT		= 0;
-const int	WIN32_NUM_BUFS = 500;
+//const int	WIN32_NUM_BUFS = 2;
 const int	WIN32_BUF_SIZE = 1024;
 #endif
 
@@ -79,7 +83,7 @@ typedef struct {
 	char	semitone;	// int 64 +/-12
 	char	fine;		// int -50 - +50 cents
 	char	beat;		// int 0% - 100%
-	char		filler1;
+	char		filler1;	// this really is unused (for firmware 2.3 anyway)
 	char	sawtooth;	// %
 	char	triangle;	// %
 	char	square;		// %
@@ -128,11 +132,10 @@ union patch_t
 		filter			oscFilter2;		// 73,12
 		filter			noiseFilter1;	// 74,12
 		filter			noiseFilter2;	// 75,12
-		//char					filler8[6];
-		NRPN			xNRPN;			// 79,3
-		char			xSwitch;
-		char			xTreble;
-		char			xBass;
+		NRPN			antiAliasNRPN;	// 79,3
+		char			antiAliasSwitch;
+		char			antiAliasCutoff;
+		char			antiAliasKeyFollow;
 		NRPN			noiseNRPN;		// 80,3
 		char			noiseTime;
 		char			noiseBreath;
@@ -167,9 +170,9 @@ union patch_t
 		char			delayFeedback;
 		char			delayDamp;
 		char			delayLevel;
-		char					filler14;
+		char			delayMix;		// ZJ
 		NRPN			reverbNRPN;		// 114,5
-		char					unknown;
+		char			reverbMix;		// ZJ
 		char			reverbLevel;
 		char			reverbDensity;
 		char			reverbTime;
@@ -218,6 +221,11 @@ public:
 	QList<int>  inPortPorts, outPortPorts;
 	int         connectedInPort, connectedInClient;
 	int         connectedOutPort, connectedOutClient;
+#ifdef Q_WS_WIN	
+	char		*mmsg; 
+	MIDIHDR 	*buf;
+	LPMIDIHDR   lpMIDIHeader;
+#endif	
 };
 
 #endif

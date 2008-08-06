@@ -23,7 +23,9 @@
 #include <iostream>
 using namespace std;
 
+#include <QByteArray>
 #include <QDataStream>
+#include <QDesktopServices>
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QMessageBox>
@@ -33,8 +35,10 @@ using namespace std;
 #include <QProgressDialog>
 #include <QSettings>
 #include <QString>
+#include <QUrl>
 
 #include "mainwindow.h"
+				 
 #include "midiportsdialog.h"
 #include "pastepatch_dialog.h"
 #include "viewhex_dialog.h"
@@ -56,9 +60,14 @@ MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Q
 	connect(action_Connections, SIGNAL(triggered()), this, SLOT(MIDIconnections()));
 	connect(action_Panic, SIGNAL(triggered()), this, SLOT(panic()));
 	connect(actionFetch_All_Patches, SIGNAL(triggered()), this, SLOT(fetchAllPatches()));
+	connect(actionEWItool_Help, SIGNAL(triggered()), this, SLOT(externalHelp()));
+	connect(actionLicence, SIGNAL( triggered() ), this, SLOT( externalLicence() ) );
 	connect(action_About, SIGNAL(triggered()), this, SLOT(about()));
 
 	connect( mainTabSet, SIGNAL( currentChanged( int ) ), this, SLOT( tabChanged( int ) ) );
+	
+	// by default we don't want context menus appearing
+	this->setContextMenuPolicy( Qt::NoContextMenu );
 	
 	setupEWItab();
 	patch_tab->setEnabled( false );
@@ -126,16 +135,19 @@ void MainWindow::tabChanged( int new_tab ) {
 
 // handlers fror the top-level menu items
 
+/**
+ * Import a .bnk or .sqs sound bank.
+ * Full banks are written out to a (native) .syx file.
+ * Patches from partial (<100) banks are put on the Clipboard
+ */
 void MainWindow::import() {
 	
 	int rc;
 	
-	// currently we only import the "bnk" soundbank format
-	
 	QString fileName = QFileDialog::getOpenFileName(this,
 			tr( "Import Soundbank" ),
 			libraryLocation,
-			tr( "Soundbanks (*.bnk)" ));
+			tr( "Soundbanks/Collections (*.bnk *.sqs)" ));
 	if (fileName.isEmpty()) return;
 	
 	QFile file(fileName);
@@ -151,18 +163,64 @@ void MainWindow::import() {
 	QString sname = info.baseName() + LIBRARY_EXTENSION;
 	
 	QDataStream inp(&file);
+	int body_start;
+	
+	if (fileName.endsWith( ".bnk", Qt::CaseInsensitive )) {
+		
+		char	header_section[EWI_SOUNDBANK_MAX_HEADER_LENGTH];
+	
+		inp.readRawData( (char *) &header_section, EWI_SOUNDBANK_MAX_HEADER_LENGTH );
+		QByteArray *ba_header_section = new QByteArray( (const char *) &header_section, EWI_SOUNDBANK_MAX_HEADER_LENGTH );
+		body_start = ba_header_section->indexOf( "BODY" );
+	}
+	else {
+		char	header_section[EWI_SQS_MAX_HEADER_LENGTH];
+	
+		inp.readRawData( (char *) &header_section, EWI_SQS_MAX_HEADER_LENGTH );
+		QByteArray *ba_header_section = new QByteArray( (const char *) &header_section, EWI_SQS_MAX_HEADER_LENGTH );
+		QByteArray ba_body_start( EWI_SQS_BODY_START, 14 );
+		body_start = ba_header_section->indexOf( ba_body_start, 0 );
+		//body_start = ba_header_section->lastIndexOf( "BODY\0\0" );
+	}
+	
+	if (body_start == -1) {
+		QMessageBox::warning( this, "EWItool",
+							  tr( "Import Error\n\nUnknown Soundbank format (Can't find BODY)" ) );
+		QApplication::restoreOverrideCursor();
+		return;
+	}
+	
+	body_start += 8; 	// skip BODY and next 4 bytes
+	
 	// skip the header
-	rc = inp.skipRawData( EWI_SOUNDBANK_HEADER_LENGTH );
-	// read the rest of the soundbank into patchSet[]
+	file.reset();
+	rc = inp.skipRawData( body_start );
+	
+	// try to read the rest of the soundbank into patchSet[]
 	setContents_listWidget->clear();
 	for (int p = 0; p < EWI_NUM_PATCHES; p++) {
 		inp.readRawData( patchSet[p].whole_patch, EWI_PATCH_LENGTH );
 		// trivial check that we got a patch
 		if (patchSet[p].parameters.trailer_f7 != (char) 0xf7) {
-			QMessageBox::warning( this, "EWItool",
-								  tr( "Import Error\n\nUnknown Soundbank format" ) );
-			QApplication::restoreOverrideCursor();
-			return;
+			// either it's not a bnk file we understand at all, or it's a partial bank...
+			if (p == 0) { 
+				// first patch seems corrupt, give up
+				QMessageBox::warning( this, "EWItool",
+									  tr( "Import Error\n\nUnknown Soundbank format (Can't find 1st patch)" ) );
+				QApplication::restoreOverrideCursor();
+				return;
+			}
+			else {
+				// we got some patches - but not a full set, so put them on the clipboard
+				for (int cp = 0; cp < p; cp++) {
+					clipboard_listWidget->addItem( trimPatchName( patchSet[cp].parameters.name ) );
+					clipboard.append( patchSet[cp] );
+				}
+				saveClipboard();
+				QApplication::restoreOverrideCursor();
+				statusBar()->showMessage(tr("Partial Soundbank imported and saved on Clipboard"), STATUS_MSG_TIMEOUT);
+				return;
+			}
 		}
 		setContents_listWidget->addItem( trimPatchName( patchSet[p].parameters.name ) );
 	}
@@ -187,7 +245,7 @@ void MainWindow::import() {
 	
 	QApplication::restoreOverrideCursor();
 	
-	statusBar()->showMessage(tr("Soundbank imported and saved"), STATUS_MSG_TIMEOUT);
+	statusBar()->showMessage(tr("Complete Soundbank imported and saved"), STATUS_MSG_TIMEOUT);
 }
 
 void MainWindow::save() {
@@ -207,12 +265,23 @@ void MainWindow::quit() {
 	qApp->quit();
 }
 
+void MainWindow::externalHelp() {
+	QDesktopServices::openUrl( QUrl( HELP_URL ) );
+}
+
+void MainWindow::externalLicence() {
+	QDesktopServices::openUrl( QUrl( GPL3_URL ) );
+}
+
 void MainWindow::about() {
 	QMessageBox::about(this,  
-					   "EWItool",
-					   "EWItool" "\n\n"
-						"Version: 0.2\n"
-						"(c) 2008 Steve Merrony" );
+					   "About EWItool",
+					   "<center><b>EWItool</b><br><br>"
+						"Version: 0.3<br><br>"
+						"&copy; 2008 Steve Merrony<br><br>"
+						"Please see<br>"
+						"<a href='http://code.google.com/p/ewitool/'>http://code.google.com/p/ewitool/</a><br>"
+						"for more information</center>" );
 }
 
 void MainWindow::MIDIconnections() {
@@ -265,9 +334,9 @@ void MainWindow::setupPatchTab() {
 	connect(ampLevel_verticalSlider, SIGNAL(valueChanged(int)), this, SLOT(changeSlider(int)));
 	connect(octaveLevel_verticalSlider, SIGNAL(valueChanged(int)), this, SLOT(changeSlider(int)));
 	
-	connect(xSwitch_checkBox, SIGNAL(stateChanged(int)), this, SLOT(changeCheckBox(int)));
-	connect(xTreble_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
-	connect(xBass_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
+	connect(antiAliasSwitch_checkBox, SIGNAL(stateChanged(int)), this, SLOT(changeCheckBox(int)));
+	connect(antiAliasCutoff_horizontalSlider, SIGNAL(valueChanged(int)), this, SLOT(changeSlider(int)));
+	connect(antiAliasKeyFollow_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	
 	connect(osc1_fine_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	connect(osc1_beat_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
@@ -357,10 +426,12 @@ void MainWindow::setupPatchTab() {
 	connect(delayTime_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	connect(delayFeedback_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	connect(delayDamp_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
+	connect(delayMix_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	
 	connect(reverbTime_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	connect(reverbDensity_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	connect(reverbDamp_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
+	connect(reverbMix_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	
 	connect(biteVibrato_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	connect(biteTremolo_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
@@ -398,37 +469,17 @@ void MainWindow::setupLibraryTab() {
 	connect(renameClipboard_pushButton, SIGNAL(clicked()), this, SLOT( renameClipboard() ));
 	connect(viewHexClipboard_pushButton, SIGNAL(clicked()), this, SLOT( viewHexClipboard() ));
 	connect(exportClipboard_pushButton, SIGNAL(clicked()), this, SLOT( exportClipboard() ));
+	
 }
 
 void MainWindow::setupEWItab() {
 	
-	/* The body of EWI_tab will be a grid of 10cols x 20rows containing patch
-	   numbers and names */ 
+	EWIList = new EWIListWidget( patchSet_widget );
+	connect( EWIList, SIGNAL( edit_signal( int ) ), this, SLOT( displayPatch( int ) ) );
+	connect( EWIList, SIGNAL( copy_signal( int ) ), this, SLOT( copyEWIPatch( int ) ) );
+	connect( EWIList, SIGNAL( paste_signal( int ) ), this, SLOT( pasteEWIPatch( int ) ) );
+	connect( EWIList, SIGNAL( rename_signal( int ) ), this, SLOT( renameEWIPatch( int ) ) );
 	
-	EWI_grid = new QGridLayout( patchSet_widget );
-	EWI_patch_group = new QButtonGroup( EWI_grid );
-	EWI_patch_group->setExclusive( true );
-	
-	for (int col = 0; col < 5; col++) {
-		for (int row = 0; row < 20; row++) {
-			EWI_patch_name[row + 20*col] = new QPushButton( QString( "          <Empty " + QString().setNum( row + 20*col + 1 ) + ">          ") );
-			EWI_patch_name[row + 20*col]->setCheckable( true );
-			EWI_patch_num[row + 20*col] = new QLCDNumber( 3 );
-			EWI_patch_num[row + 20*col]->setSegmentStyle(QLCDNumber::Filled);
-			EWI_patch_num[row + 20*col]->display( col*20 + row + 1 );
-			EWI_grid->addWidget( EWI_patch_num[row + 20*col], row, col*2 );
-			EWI_grid->addWidget( EWI_patch_name[row + 20*col], row, (col*2)+1 );
-			EWI_patch_group->addButton( EWI_patch_name[row + 20*col], row + 20*col );
-		}
-	}
-	
-	patchSet_widget->setEnabled( false );
-	
-	connect( EWI_patch_group, SIGNAL( buttonClicked( int ) ), this, SLOT( patchSelected( int ) ) );
-	connect( editPatch_pushButton, SIGNAL( clicked() ), this, SLOT( displayPatch() ) );
-	connect( copyPatch_pushButton, SIGNAL( clicked() ), this, SLOT( copyEWIPatch() ) );
-	connect( pastePatch_pushButton, SIGNAL( clicked() ), this, SLOT( pasteEWIPatch() ) );
-	connect( renamePatch_pushButton, SIGNAL( clicked() ), this, SLOT( renameEWIPatch() ) );
 }
 
 void MainWindow::saveClipboard() {
@@ -561,6 +612,10 @@ void MainWindow::saveCurrentPatch() {
 	patchSet[edit_patch.parameters.patch_num] = edit_patch;
 }
 
+/**
+ * Fetch all 100 patches from the EWI
+ * Switch GUI to the EWI tab and display all the names
+ */
 void MainWindow::fetchAllPatches() {
 	
 	QString sname;
@@ -572,18 +627,8 @@ void MainWindow::fetchAllPatches() {
 	
 	progressDialog.setWindowTitle(tr("Fetching Patches"));
 	
-#ifdef Q_WS_WIN
-	// on win32 we'd better re-open the port if already open (to feed it more buffers...)
-	if (mididata->connectedInPort != -1) {
-		int ip = mididata->connectedInPort;
-		mididata->disconnectInput();
-		mididata->connectInput( 0, ip );
-	}
-#endif
-	
-	
 	mainTabSet->setCurrentWidget( EWI_tab );
-	mididata->last_patch_loaded = 0;
+	mididata->last_patch_loaded = -1;
 	int p_int;
 	
 	for ( char p = 0; p < EWI_NUM_PATCHES; p++ )
@@ -604,17 +649,17 @@ return;
 	}
 	
 	for (int p = 0; p < EWI_NUM_PATCHES; p++ ) {
-		EWI_patch_name[p]->setText( trimPatchName( mididata->patches[p].parameters.name ) );
+		EWIList->setLabel( p, trimPatchName( mididata->patches[p].parameters.name ) );
 	} 
 	
 	libraryName.clear();  					// as we've just loaded patches direct from the EWI there's no current libary name
 	patchSet_widget->setEnabled( true );  	// now patches are loaded we can choose between them
-	editPatch_pushButton->setEnabled( false );
-	copyPatch_pushButton->setEnabled( false );
-	pastePatch_pushButton->setEnabled( false );
 	
 }
 
+/**
+ * Prints a table of the patch numbers and names to fit on top half of an A4 page
+ */
 void MainWindow::printEWIpatches() {
 	
 	QPrinter printer;
@@ -636,13 +681,16 @@ void MainWindow::printEWIpatches() {
 	for (int row = 0; row < 25; row++) {
 		for (int col = 0; col < 4; col++) {
 			plab.setNum(col*25 + row + 1);
-			p.drawText( half_inch+(col*col_spacing), half_inch+(row*line_height), plab + ": " + EWI_patch_name[row + 25*col]->text() );
+			p.drawText( half_inch+(col*col_spacing), half_inch+(row*line_height), plab + ": " + EWIList->getLabel( row + 25*col ) );
 		}
 	}
 
 	p.end();
 }
 
+/**
+ * Prints a dump of the editor window, should fit on top half of an A4 page
+ */
 void MainWindow::printCurrentPatch() {
 	
 	QPrinter *printer = new QPrinter();
@@ -669,20 +717,19 @@ void MainWindow::printCurrentPatch() {
 void MainWindow::revertPatch() {
 	
 	edit_patch = backup_patch;
-	displayPatch( );
+	displayPatch();
 	
 }
 
 void MainWindow::patchSelected( int patch_num ) {
 	
 	edit_patch = mididata->patches[patch_num];
-	editPatch_pushButton->setEnabled( true );
-	copyPatch_pushButton->setEnabled( true );
-	pastePatch_pushButton->setEnabled( true );
-	renamePatch_pushButton->setEnabled( true );
 }
 
-void MainWindow::displayPatch( ) {
+void MainWindow::displayPatch() {
+	
+	//patchSelected( patch_num);
+	//cout << "£diting " << qPrintable (this->objectName() ) << endl;
 	
 	// store a copy of the patch for 'revert' functiom
 	backup_patch = edit_patch;
@@ -801,9 +848,9 @@ void MainWindow::displayPatch( ) {
 	noisefilter2_sweepDepth_dial->setValue( edit_patch.parameters.noiseFilter2.sweepDepth );
 	noisefilter2_sweepTime_dial->setValue( edit_patch.parameters.noiseFilter2.sweepTime );
 	
-	xSwitch_checkBox->setChecked( edit_patch.parameters.xSwitch == 0x01 );
-	xTreble_dial->setValue( edit_patch.parameters.xTreble );
-	xBass_dial->setValue( edit_patch.parameters.xBass );
+	antiAliasSwitch_checkBox->setChecked( edit_patch.parameters.antiAliasSwitch == 0x01 );
+	antiAliasCutoff_horizontalSlider->setValue( edit_patch.parameters.antiAliasCutoff );
+	antiAliasKeyFollow_dial->setValue( edit_patch.parameters.antiAliasKeyFollow );
 	
 	chorusSwitch_checkBox->setChecked( edit_patch.parameters.chorusSwitch == 0x01 );
 	chorusDelay1_dial->setValue( edit_patch.parameters.chorusDelay1 );
@@ -819,11 +866,13 @@ void MainWindow::displayPatch( ) {
 	delayTime_dial->setValue( edit_patch.parameters.delayTime );
 	delayFeedback_dial->setValue( edit_patch.parameters.delayFeedback );
 	delayDamp_dial->setValue( edit_patch.parameters.delayDamp );
+	delayMix_dial->setValue( edit_patch.parameters.delayMix );
 	delayLevel_verticalSlider->setValue( edit_patch.parameters.delayLevel );
 	
 	reverbTime_dial->setValue( edit_patch.parameters.reverbTime );
 	reverbDensity_dial->setValue( edit_patch.parameters.reverbDensity );
 	reverbDamp_dial->setValue( edit_patch.parameters.reverbDamp );
+	reverbMix_dial->setValue( edit_patch.parameters.reverbMix );
 	reverbLevel_verticalSlider->setValue( edit_patch.parameters.reverbLevel );
 	
 	biteTremolo_dial->setValue( edit_patch.parameters.biteTremolo );
@@ -839,6 +888,13 @@ void MainWindow::displayPatch( ) {
 	foreach (QWidget * current, pchildren) {
 		current->blockSignals( false );
 	}
+}
+
+void MainWindow::displayPatch( int p ) {
+	
+	patchSelected( p );
+	displayPatch();
+
 }
 
 // the Patch editor widget handlers...
@@ -884,7 +940,7 @@ void MainWindow::changeCheckBox( int s ) {
 		nl = 1; 
 	else 
 		nl = 0;
-	if ( obj->objectName() == "xSwitch_checkBox" )		{ mididata->sendLiveControl( 0, 79, nl ); edit_patch.parameters.xSwitch = nl; return; }
+	if ( obj->objectName() == "antiAliasSwitch_checkBox" )		{ mididata->sendLiveControl( 0, 79, nl ); edit_patch.parameters.antiAliasSwitch = nl; return; }
 	if ( obj->objectName() == "xfade_checkBox" )		{ mididata->sendLiveControl( 6, 81, nl ); edit_patch.parameters.osc2Xfade= nl; return; }
 	if ( obj->objectName() == "chorusSwitch_checkBox" )	{ mididata->sendLiveControl( 9, 81, nl ); edit_patch.parameters.chorusSwitch= nl; return; }
 	if ( obj->objectName() == "bendStepMode_checkBox" )	{ mididata->sendLiveControl( 1, 81, nl ); edit_patch.parameters.bendStepMode = nl; return; }
@@ -893,6 +949,7 @@ void MainWindow::changeCheckBox( int s ) {
 
 void MainWindow::changeSlider( int nl ) {
 	
+	statusBar()->showMessage( QString( "%1" ).arg( nl ), STATUS_MSG_TIMEOUT ); 
 	QObject *obj = sender();
 	if ( obj->objectName() == "osc1_saw_verticalSlider" )	{ mididata->sendLiveControl( 5, 64, nl ); edit_patch.parameters.osc1.sawtooth = nl; return; }
 	if ( obj->objectName() == "osc1_tri_verticalSlider" )	{ mididata->sendLiveControl( 6, 64, nl ); edit_patch.parameters.osc1.triangle = nl; return; }
@@ -912,105 +969,116 @@ void MainWindow::changeSlider( int nl ) {
 	if ( obj->objectName() == "reverbLevel_verticalSlider" )		{ mididata->sendLiveControl( 1, 114, nl ); edit_patch.parameters.reverbLevel = nl; return; }
 	if ( obj->objectName() == "ampLevel_verticalSlider" )			{ mididata->sendLiveControl( 1, 88, nl ); edit_patch.parameters.ampLevel = nl; return; }
 	if ( obj->objectName() == "octaveLevel_verticalSlider" )		{ mididata->sendLiveControl( 2, 88, nl ); edit_patch.parameters.octaveLevel = nl; return; }
+	if ( obj->objectName() == "antiAliasCutoff_horizontalSlider" )		{ mididata->sendLiveControl( 1, 79, nl ); edit_patch.parameters.antiAliasCutoff = nl; return; }
 	cerr << "Oops - unhandled change for slider\n";
 }
 
 void MainWindow::changeDial( int nl ) {
 	
-	// send the cahnge to the EWI and write it into edit_patch
-	
+	// send the change to the EWI and write it into edit_patch
+	statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( 100*nl/127 ), STATUS_MSG_TIMEOUT ); 
 	QObject *obj = sender();
-	if ( obj->objectName() == "xTreble_dial" )		{ mididata->sendLiveControl( 1, 79, nl ); edit_patch.parameters.xTreble = nl; return; }
-	if ( obj->objectName() == "xBass_dial" )		{ mididata->sendLiveControl( 2, 79, nl ); edit_patch.parameters.xBass = nl; return; }
 	
-	if ( obj->objectName() == "osc1_fine_dial" )	{ mididata->sendLiveControl( 2, 64, nl ); edit_patch.parameters.osc1.fine = nl; return; }
+	if ( obj->objectName() == "antiAliasKeyFollow_dial" )		{ mididata->sendLiveControl( 2, 79, nl ); edit_patch.parameters.antiAliasKeyFollow = nl; return; }
+	
+	if ( obj->objectName() == "osc1_fine_dial" )	{ 
+		mididata->sendLiveControl( 2, 64, nl ); 
+		edit_patch.parameters.osc1.fine = nl; 
+		statusBar()->showMessage( QString( "Value: %1 (%2 cents)" ).arg( nl ).arg( nl-64 ), STATUS_MSG_TIMEOUT ); 
+		return; }
 	if ( obj->objectName() == "osc1_beat_dial" )	{ mididata->sendLiveControl( 3, 64, nl ); edit_patch.parameters.osc1.beat = nl;return; }
 	if ( obj->objectName() == "osc1_pulseWidth_dial" )	{ mididata->sendLiveControl( 8, 64, nl ); edit_patch.parameters.osc1.pulseWidth = nl;return; }
 	if ( obj->objectName() == "osc1_PWMfreq_dial" )		{ mididata->sendLiveControl( 9, 64, nl ); edit_patch.parameters.osc1.PWMfreq = nl;return; }
 	if ( obj->objectName() == "osc1_PWMdepth_dial" )	{ mididata->sendLiveControl( 10, 64, nl ); edit_patch.parameters.osc1.PWMdepth = nl;return; }
-	if ( obj->objectName() == "osc1_sweepDepth_dial" )	{ mididata->sendLiveControl( 11, 64, nl ); edit_patch.parameters.osc1.sweepDepth = nl;return; }
+	if ( obj->objectName() == "osc1_sweepDepth_dial" )	{ 
+		mididata->sendLiveControl( 11, 64, nl ); 
+		edit_patch.parameters.osc1.sweepDepth = nl;
+		statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );
+		return; }
 	if ( obj->objectName() == "osc1_sweepTime_dial" )	{ mididata->sendLiveControl( 12, 64, nl ); edit_patch.parameters.osc1.sweepTime = nl;return; }
 	if ( obj->objectName() == "osc1_breathDepth_dial" )	{ mididata->sendLiveControl( 13, 64, nl ); edit_patch.parameters.osc1.breathDepth = nl;return; }
 	if ( obj->objectName() == "osc1_breathAttain_dial" )	{ mididata->sendLiveControl( 14, 64, nl ); edit_patch.parameters.osc1.breathAttain = nl;return; }
-	if ( obj->objectName() == "osc1_breathCurve_dial" )		{ mididata->sendLiveControl( 15, 64, nl ); edit_patch.parameters.osc1.breathCurve = nl;return; }
+	if ( obj->objectName() == "osc1_breathCurve_dial" )		{ mididata->sendLiveControl( 15, 64, nl ); edit_patch.parameters.osc1.breathCurve = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "osc1_breathThresh_dial" )	{ mididata->sendLiveControl( 16, 64, nl ); edit_patch.parameters.osc1.breathThreshold = nl;return; }
 	
-	if ( obj->objectName() == "osc2_fine_dial" )	{ mididata->sendLiveControl( 2, 65, nl ); edit_patch.parameters.osc2.fine = nl; return; }
+	if ( obj->objectName() == "osc2_fine_dial" )	{ mididata->sendLiveControl( 2, 65, nl ); edit_patch.parameters.osc2.fine = nl; statusBar()->showMessage( QString( "Value: %1 (%2 cents)" ).arg( nl ).arg( nl-64 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "osc2_beat_dial" )	{ mididata->sendLiveControl( 3, 65, nl ); edit_patch.parameters.osc2.beat = nl;return; }
 	if ( obj->objectName() == "osc2_pulseWidth_dial" )	{ mididata->sendLiveControl( 8, 65, nl ); edit_patch.parameters.osc2.pulseWidth = nl;return; }
 	if ( obj->objectName() == "osc2_PWMfreq_dial" )		{ mididata->sendLiveControl( 9, 65, nl ); edit_patch.parameters.osc2.PWMfreq = nl;return; }
 	if ( obj->objectName() == "osc2_PWMdepth_dial" )	{ mididata->sendLiveControl( 10, 65, nl ); edit_patch.parameters.osc2.PWMdepth = nl;return; }
-	if ( obj->objectName() == "osc2_sweepDepth_dial" )	{ mididata->sendLiveControl( 11, 65, nl ); edit_patch.parameters.osc2.sweepDepth = nl;return; }
+	if ( obj->objectName() == "osc2_sweepDepth_dial" )	{ mididata->sendLiveControl( 11, 65, nl ); edit_patch.parameters.osc2.sweepDepth = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "osc2_sweepTime_dial" )	{ mididata->sendLiveControl( 12, 65, nl ); edit_patch.parameters.osc2.sweepTime = nl;return; }
 	if ( obj->objectName() == "osc2_breathDepth_dial" )	{ mididata->sendLiveControl( 13, 65, nl ); edit_patch.parameters.osc2.breathDepth = nl;return; }
 	if ( obj->objectName() == "osc2_breathAttain_dial" )	{ mididata->sendLiveControl( 14, 65, nl ); edit_patch.parameters.osc2.breathAttain = nl;return; }
-	if ( obj->objectName() == "osc2_breathCurve_dial" )		{ mididata->sendLiveControl( 15, 65, nl ); edit_patch.parameters.osc2.breathCurve = nl;return; }
+	if ( obj->objectName() == "osc2_breathCurve_dial" )		{ mididata->sendLiveControl( 15, 65, nl ); edit_patch.parameters.osc2.breathCurve = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "osc2_breathThresh_dial" )	{ mididata->sendLiveControl( 16, 65, nl ); edit_patch.parameters.osc2.breathThreshold = nl;return; }
 	
 		
-	if ( obj->objectName() == "oscfilter1_Q_dial" )			{ mididata->sendLiveControl( 2, 72, nl ); edit_patch.parameters.oscFilter1.Q = nl; return; }
-	if ( obj->objectName() == "oscfilter1_keyFollow_dial" )	{ mididata->sendLiveControl( 3, 72, nl ); edit_patch.parameters.oscFilter1.keyFollow = nl; return; }
+	if ( obj->objectName() == "oscfilter1_Q_dial" )			{ mididata->sendLiveControl( 2, 72, nl ); edit_patch.parameters.oscFilter1.Q = nl; statusBar()->showMessage( QString( "Value: %1 (%2 Hz)" ).arg( nl ).arg( nl * 100 ), STATUS_MSG_TIMEOUT );return; }
+	if ( obj->objectName() == "oscfilter1_keyFollow_dial" )	{ mididata->sendLiveControl( 3, 72, nl ); edit_patch.parameters.oscFilter1.keyFollow = nl; statusBar()->showMessage( QString( "Value: %1 (%2:1)" ).arg( nl ).arg( nl - 64 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "oscfilter1_breathMod_dial" )	{ mididata->sendLiveControl( 4, 72, nl ); edit_patch.parameters.oscFilter1.breathMod = nl; return; }
 	if ( obj->objectName() == "oscfilter1_LFOfreq_dial" )	{ mididata->sendLiveControl( 5, 72, nl ); edit_patch.parameters.oscFilter1.LFOfreq = nl; return; }
 	if ( obj->objectName() == "oscfilter1_LFOdepth_dial" )	{ mididata->sendLiveControl( 6, 72, nl ); edit_patch.parameters.oscFilter1.LFOdepth = nl; return; }
-	if ( obj->objectName() == "oscfilter1_LFObreath_dial" )	{ mididata->sendLiveControl( 7, 72, nl ); edit_patch.parameters.oscFilter1.LFObreath = nl; return; }
+	if ( obj->objectName() == "oscfilter1_LFObreath_dial" )	{ mididata->sendLiveControl( 7, 72, nl ); edit_patch.parameters.oscFilter1.LFObreath = nl; statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "oscfilter1_LFOthreshold_dial" )	{ mididata->sendLiveControl( 8, 72, nl ); edit_patch.parameters.oscFilter1.LFOthreshold = nl; return; }
-	if ( obj->objectName() == "oscfilter1_sweepDepth_dial" )	{ mididata->sendLiveControl( 9, 72, nl ); edit_patch.parameters.oscFilter1.sweepDepth = nl; return; }
+	if ( obj->objectName() == "oscfilter1_sweepDepth_dial" )	{ mididata->sendLiveControl( 9, 72, nl ); edit_patch.parameters.oscFilter1.sweepDepth = nl; statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "oscfilter1_sweepTime_dial" )		{ mididata->sendLiveControl( 10, 72, nl ); edit_patch.parameters.oscFilter1.sweepTime = nl; return; }
-	if ( obj->objectName() == "oscfilter1_breathCurve_dial" )	{ mididata->sendLiveControl( 11, 72, nl ); edit_patch.parameters.oscFilter1.breathCurve = nl; return; }
+	if ( obj->objectName() == "oscfilter1_breathCurve_dial" )	{ mididata->sendLiveControl( 11, 72, nl ); edit_patch.parameters.oscFilter1.breathCurve = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 		
-	if ( obj->objectName() == "oscfilter2_Q_dial" )			{ mididata->sendLiveControl( 2, 73, nl ); edit_patch.parameters.oscFilter2.Q = nl; return; }
-	if ( obj->objectName() == "oscfilter2_keyFollow_dial" )	{ mididata->sendLiveControl( 3, 73, nl ); edit_patch.parameters.oscFilter2.keyFollow = nl; return; }
+	if ( obj->objectName() == "oscfilter2_Q_dial" )			{ mididata->sendLiveControl( 2, 73, nl ); edit_patch.parameters.oscFilter2.Q = nl;statusBar()->showMessage( QString( "Value: %1 (%2 Hz)" ).arg( nl ).arg( nl * 100 ), STATUS_MSG_TIMEOUT ); return; }
+	if ( obj->objectName() == "oscfilter2_keyFollow_dial" )	{ mididata->sendLiveControl( 3, 73, nl ); edit_patch.parameters.oscFilter2.keyFollow = nl; statusBar()->showMessage( QString( "Value: %1 (%2:1)" ).arg( nl ).arg( nl - 64 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "oscfilter2_breathMod_dial" )	{ mididata->sendLiveControl( 4, 73, nl ); edit_patch.parameters.oscFilter2.breathMod = nl; return; }
 	if ( obj->objectName() == "oscfilter2_LFOfreq_dial" )	{ mididata->sendLiveControl( 5, 73, nl ); edit_patch.parameters.oscFilter2.LFOfreq = nl; return; }
 	if ( obj->objectName() == "oscfilter2_LFOdepth_dial" )	{ mididata->sendLiveControl( 6, 73, nl ); edit_patch.parameters.oscFilter2.LFOdepth = nl; return; }
-	if ( obj->objectName() == "oscfilter2_LFObreath_dial" )	{ mididata->sendLiveControl( 7, 73, nl ); edit_patch.parameters.oscFilter2.LFObreath = nl; return; }
+	if ( obj->objectName() == "oscfilter2_LFObreath_dial" )	{ mididata->sendLiveControl( 7, 73, nl ); edit_patch.parameters.oscFilter2.LFObreath = nl; statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "oscfilter2_LFOthreshold_dial" )	{ mididata->sendLiveControl( 8, 73, nl ); edit_patch.parameters.oscFilter2.LFOthreshold = nl; return; }
-	if ( obj->objectName() == "oscfilter2_sweepDepth_dial" )	{ mididata->sendLiveControl( 9, 73, nl ); edit_patch.parameters.oscFilter2.sweepDepth = nl; return; }
+	if ( obj->objectName() == "oscfilter2_sweepDepth_dial" )	{ mididata->sendLiveControl( 9, 73, nl ); edit_patch.parameters.oscFilter2.sweepDepth = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 	if ( obj->objectName() == "oscfilter2_sweepTime_dial" )		{ mididata->sendLiveControl( 10, 73, nl ); edit_patch.parameters.oscFilter2.sweepTime = nl; return; }
-	if ( obj->objectName() == "oscfilter2_breathCurve_dial" )	{ mididata->sendLiveControl( 11, 73, nl ); edit_patch.parameters.oscFilter2.breathCurve = nl; return; }
+	if ( obj->objectName() == "oscfilter2_breathCurve_dial" )	{ mididata->sendLiveControl( 11, 73, nl ); edit_patch.parameters.oscFilter2.breathCurve = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 	
 	if ( obj->objectName() == "noiseTime_dial" )			{ mididata->sendLiveControl( 0, 80, nl ); edit_patch.parameters.noiseTime = nl; return; }
-	if ( obj->objectName() == "noiseBreath_dial" )			{ mididata->sendLiveControl( 1, 80, nl ); edit_patch.parameters.noiseBreath = nl; return; }
+	if ( obj->objectName() == "noiseBreath_dial" )			{ mididata->sendLiveControl( 1, 80, nl ); edit_patch.parameters.noiseBreath = nl; statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
 	
-	if ( obj->objectName() == "noisefilter1_Q_dial" )			{ mididata->sendLiveControl( 2, 74, nl ); edit_patch.parameters.noiseFilter1.Q = nl; return; }
-	if ( obj->objectName() == "noisefilter1_keyFollow_dial" )	{ mididata->sendLiveControl( 3, 74, nl ); edit_patch.parameters.noiseFilter1.keyFollow = nl; return; }
+	if ( obj->objectName() == "noisefilter1_Q_dial" )			{ mididata->sendLiveControl( 2, 74, nl ); edit_patch.parameters.noiseFilter1.Q = nl;statusBar()->showMessage( QString( "Value: %1 (%2 Hz)" ).arg( nl ).arg( nl * 100 ), STATUS_MSG_TIMEOUT ); return; }
+	if ( obj->objectName() == "noisefilter1_keyFollow_dial" )	{ mididata->sendLiveControl( 3, 74, nl ); edit_patch.parameters.noiseFilter1.keyFollow = nl; statusBar()->showMessage( QString( "Value: %1 (%2:1)" ).arg( nl ).arg( nl - 64 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "noisefilter1_breathMod_dial" )	{ mididata->sendLiveControl( 4, 74, nl ); edit_patch.parameters.noiseFilter1.breathMod = nl; return; }
 	if ( obj->objectName() == "noisefilter1_LFOfreq_dial" )		{ mididata->sendLiveControl( 5, 74, nl ); edit_patch.parameters.noiseFilter1.LFOfreq = nl; return; }
 	if ( obj->objectName() == "noisefilter1_LFOdepth_dial" )	{ mididata->sendLiveControl( 6, 74, nl ); edit_patch.parameters.noiseFilter1.LFOdepth = nl; return; }
-	if ( obj->objectName() == "noisefilter1_LFObreath_dial" )	{ mididata->sendLiveControl( 7, 74, nl ); edit_patch.parameters.noiseFilter1.LFObreath = nl; return; }
+	if ( obj->objectName() == "noisefilter1_LFObreath_dial" )	{ mididata->sendLiveControl( 7, 74, nl ); edit_patch.parameters.noiseFilter1.LFObreath = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 	if ( obj->objectName() == "noisefilter1_LFOthreshold_dial" )	{ mididata->sendLiveControl( 8, 74, nl ); edit_patch.parameters.noiseFilter1.LFOthreshold = nl; return; }
-	if ( obj->objectName() == "noisefilter1_sweepDepth_dial" )		{mididata->sendLiveControl( 9, 74, nl ); edit_patch.parameters.noiseFilter1.sweepDepth = nl; return; }
+	if ( obj->objectName() == "noisefilter1_sweepDepth_dial" )		{mididata->sendLiveControl( 9, 74, nl ); edit_patch.parameters.noiseFilter1.sweepDepth = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 	if ( obj->objectName() == "noisefilter1_sweepTime_dial" )		{ mididata->sendLiveControl( 10, 74, nl ); edit_patch.parameters.noiseFilter1.sweepTime = nl; return; }
-	if ( obj->objectName() == "noisefilter1_breathCurve_dial" )		{mididata->sendLiveControl( 11, 74, nl ); edit_patch.parameters.noiseFilter1.breathCurve = nl; return; }
+	if ( obj->objectName() == "noisefilter1_breathCurve_dial" )		{mididata->sendLiveControl( 11, 74, nl ); edit_patch.parameters.noiseFilter1.breathCurve = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 	
-	if ( obj->objectName() == "noisefilter2_Q_dial" )			{ mididata->sendLiveControl( 2, 75, nl ); edit_patch.parameters.noiseFilter2.Q = nl; return; }
-	if ( obj->objectName() == "noisefilter2_keyFollow_dial" )	{ mididata->sendLiveControl( 3, 75, nl ); edit_patch.parameters.noiseFilter2.keyFollow = nl; return; }
+	if ( obj->objectName() == "noisefilter2_Q_dial" )			{ mididata->sendLiveControl( 2, 75, nl ); edit_patch.parameters.noiseFilter2.Q = nl;statusBar()->showMessage( QString( "Value: %1 (%2 Hz)" ).arg( nl ).arg( nl * 100 ), STATUS_MSG_TIMEOUT ); return; }
+	if ( obj->objectName() == "noisefilter2_keyFollow_dial" )	{ mididata->sendLiveControl( 3, 75, nl ); edit_patch.parameters.noiseFilter2.keyFollow = nl;statusBar()->showMessage( QString( "Value: %1 (%2:1)" ).arg( nl ).arg( nl - 64 ), STATUS_MSG_TIMEOUT ); return; }
 	if ( obj->objectName() == "noisefilter2_breathMod_dial" )	{ mididata->sendLiveControl( 4, 75, nl ); edit_patch.parameters.noiseFilter2.breathMod = nl; return; }
 	if ( obj->objectName() == "noisefilter2_LFOfreq_dial" )		{ mididata->sendLiveControl( 5, 75, nl ); edit_patch.parameters.noiseFilter2.LFOfreq = nl; return; }
 	if ( obj->objectName() == "noisefilter2_LFOdepth_dial" )	{ mididata->sendLiveControl( 6, 75, nl ); edit_patch.parameters.noiseFilter2.LFOdepth = nl; return; }
-	if ( obj->objectName() == "noisefilter2_LFObreath_dial" )	{ mididata->sendLiveControl( 7, 75, nl ); edit_patch.parameters.noiseFilter2.LFObreath = nl; return; }
+	if ( obj->objectName() == "noisefilter2_LFObreath_dial" )	{ mididata->sendLiveControl( 7, 75, nl ); edit_patch.parameters.noiseFilter2.LFObreath = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 	if ( obj->objectName() == "noisefilter2_LFOthreshold_dial" )	{ mididata->sendLiveControl( 8, 75, nl ); edit_patch.parameters.noiseFilter2.LFOthreshold = nl; return; }
-	if ( obj->objectName() == "noisefilter2_sweepDepth_dial" )		{mididata->sendLiveControl( 9, 75, nl ); edit_patch.parameters.noiseFilter2.sweepDepth = nl; return; }
+	if ( obj->objectName() == "noisefilter2_sweepDepth_dial" )		{mididata->sendLiveControl( 9, 75, nl ); edit_patch.parameters.noiseFilter2.sweepDepth = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 	if ( obj->objectName() == "noisefilter2_sweepTime_dial" )		{ mididata->sendLiveControl( 10, 75, nl ); edit_patch.parameters.noiseFilter2.sweepTime = nl; return; }
-	if ( obj->objectName() == "noisefilter2_breathCurve_dial" )		{mididata->sendLiveControl( 11, 75, nl ); edit_patch.parameters.noiseFilter2.breathCurve = nl; return; }
+	if ( obj->objectName() == "noisefilter2_breathCurve_dial" )		{mididata->sendLiveControl( 11, 75, nl ); edit_patch.parameters.noiseFilter2.breathCurve = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 		
-	if ( obj->objectName() == "chorusDelay1_dial" )			{ mididata->sendLiveControl( 0, 112, nl ); edit_patch.parameters.chorusDelay1 = nl; return; }
-	if ( obj->objectName() == "chorusModLev1_dial" )		{ mididata->sendLiveControl( 1, 112, nl ); edit_patch.parameters.chorusModLev1 = nl; return; }
-	if ( obj->objectName() == "chorusWetLev1_dial" )		{ mididata->sendLiveControl( 2, 112, nl ); edit_patch.parameters.chorusWetLev1 = nl; return; }
-	if ( obj->objectName() == "chorusDelay2_dial" )			{ mididata->sendLiveControl( 3, 112, nl ); edit_patch.parameters.chorusDelay2 = nl; return; }
-	if ( obj->objectName() == "chorusModLev2_dial" )		{ mididata->sendLiveControl( 4, 112, nl ); edit_patch.parameters.chorusModLev2 = nl; return; }
-	if ( obj->objectName() == "chorusWetLev2_dial" )		{ mididata->sendLiveControl( 5, 112, nl ); edit_patch.parameters.chorusWetLev2 = nl; return; }
+	if ( obj->objectName() == "chorusDelay1_dial" )			{ mididata->sendLiveControl( 0, 112, nl ); edit_patch.parameters.chorusDelay1 = nl; statusBar()->showMessage( QString( "Value: %1 (%2 ms)" ).arg( nl ).arg( nl ), STATUS_MSG_TIMEOUT );return; }
+	if ( obj->objectName() == "chorusModLev1_dial" )		{ mididata->sendLiveControl( 1, 112, nl ); edit_patch.parameters.chorusModLev1 = nl; statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
+	if ( obj->objectName() == "chorusWetLev1_dial" )		{ mididata->sendLiveControl( 2, 112, nl ); edit_patch.parameters.chorusWetLev1 = nl; statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
+	if ( obj->objectName() == "chorusDelay2_dial" )			{ mididata->sendLiveControl( 3, 112, nl ); edit_patch.parameters.chorusDelay2 = nl; statusBar()->showMessage( QString( "Value: %1 (%2 ms)" ).arg( nl ).arg( nl ), STATUS_MSG_TIMEOUT );return; }
+	if ( obj->objectName() == "chorusModLev2_dial" )		{ mididata->sendLiveControl( 4, 112, nl ); edit_patch.parameters.chorusModLev2 = nl; statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
+	if ( obj->objectName() == "chorusWetLev2_dial" )		{ mididata->sendLiveControl( 5, 112, nl ); edit_patch.parameters.chorusWetLev2 = nl;statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT ); return; }
 	if ( obj->objectName() == "chorusDryLevel_dial" )		{ mididata->sendLiveControl( 8, 112, nl ); edit_patch.parameters.chorusDryLevel = nl; return; }
-	if ( obj->objectName() == "chorusFeedback_dial" )		{ mididata->sendLiveControl( 6, 112, nl ); edit_patch.parameters.chorusFeedback = nl; return; }
+	if ( obj->objectName() == "chorusFeedback_dial" )		{ mididata->sendLiveControl( 6, 112, nl ); edit_patch.parameters.chorusFeedback = nl; statusBar()->showMessage( QString( "Value: %1 (%2\%)" ).arg( nl ).arg( (100*nl/127) - 50 ), STATUS_MSG_TIMEOUT );return; }
 	
-	if ( obj->objectName() == "delayTime_dial" )			{ mididata->sendLiveControl( 0, 113, nl ); edit_patch.parameters.delayTime = nl; return; }
+	if ( obj->objectName() == "delayTime_dial" )			{ mididata->sendLiveControl( 0, 113, nl ); edit_patch.parameters.delayTime = nl; statusBar()->showMessage( QString( "Value: %1 (%2 ms)" ).arg( nl ).arg( nl * 10 ), STATUS_MSG_TIMEOUT );return; }
 	if ( obj->objectName() == "delayFeedback_dial" )		{ mididata->sendLiveControl( 1, 113, nl ); edit_patch.parameters.delayFeedback = nl; return; }
 	if ( obj->objectName() == "delayDamp_dial" )			{ mididata->sendLiveControl( 2, 113, nl ); edit_patch.parameters.delayDamp = nl; return; }
+	if ( obj->objectName() == "delayMix_dial" )			{ mididata->sendLiveControl( 4, 113, nl ); edit_patch.parameters.delayMix = nl; return; }
 	
 	if ( obj->objectName() == "reverbTime_dial" )			{ mididata->sendLiveControl( 3, 114, nl ); edit_patch.parameters.reverbTime = nl; return; }
 	if ( obj->objectName() == "reverbDensity_dial" )		{ mididata->sendLiveControl( 2, 114, nl ); edit_patch.parameters.reverbDensity = nl; return; }
 	if ( obj->objectName() == "reverbDamp_dial" )			{ mididata->sendLiveControl( 4, 114, nl ); edit_patch.parameters.reverbDamp = nl; return; }
+	if ( obj->objectName() == "reverbMix_dial" )			{ mididata->sendLiveControl( 0, 114, nl ); edit_patch.parameters.reverbMix = nl; return; }
 	
 	if ( obj->objectName() == "biteVibrato_dial" )			{ mididata->sendLiveControl( 2, 81, nl ); edit_patch.parameters.biteVibrato = nl; return; }
 	if ( obj->objectName() == "biteTremolo_dial" )			{ mididata->sendLiveControl( 0, 88, nl ); edit_patch.parameters.biteTremolo = nl; return; }
@@ -1114,6 +1182,10 @@ void MainWindow::defaultPatch() {
 	oscfilter2_sweepTime_dial->setValue( 0 );
 	oscfilter2_sweepDepth_dial->setValue( 64 );
 	
+	antiAliasSwitch_checkBox->setCheckState( Qt::Checked );
+	antiAliasCutoff_horizontalSlider->setValue( 76 );
+	antiAliasKeyFollow_dial->setValue( 12 );
+	
 	makeDry();
 	deNoise();		
 	// sensible volumes
@@ -1135,9 +1207,11 @@ void MainWindow::makeDry() {
 	delayTime_dial->setValue( 0 );
 	delayDamp_dial->setValue( 0 );
 	delayFeedback_dial->setValue( 0 );
+	delayMix_dial->setValue( 127 );		
 	delayLevel_verticalSlider->setValue( 0 );
 	reverbTime_dial->setValue( 0 );
 	reverbDamp_dial->setValue( 0 );
+	reverbMix_dial->setValue( 127 ); 		
 	reverbDensity_dial->setValue( 0 );
 	reverbLevel_verticalSlider->setValue( 0 );
 }
@@ -1263,10 +1337,12 @@ void MainWindow::randomPatch() {
 	delayTime_dial->setValue( randBetween( 0, 127 ) );
 	delayDamp_dial->setValue( randBetween( 0, 127 ) );
 	delayFeedback_dial->setValue( randBetween( 0, 127 ) );
+	delayMix_dial->setValue( 127 );							// ...
 	delayLevel_verticalSlider->setValue( randBetween( 0, 127 ) );
 	reverbTime_dial->setValue( randBetween( 0, 127 ) );
 	reverbDamp_dial->setValue( randBetween( 0, 127 ) );
 	reverbDensity_dial->setValue( randBetween( 0, 127 ) );
+	reverbMix_dial->setValue( 127 );						//  seems necessary
 	reverbLevel_verticalSlider->setValue( randBetween( 0, 127 ) );
 }
 
@@ -1351,9 +1427,11 @@ void MainWindow::randomisePatch() {
 	delayTime_dial->setValue( randNear( 0, 127, delayTime_dial->value() ) );
 	delayDamp_dial->setValue( randNear( 0, 127, delayDamp_dial->value() ) );
 	delayFeedback_dial->setValue( randNear( 0, 127, delayFeedback_dial->value() ) );
+	delayMix_dial->setValue( randNear( 0, 127, delayMix_dial->value() ) );
 	delayLevel_verticalSlider->setValue( randNear( 0, 127, delayLevel_verticalSlider->value() ) );
 	reverbTime_dial->setValue( randNear( 0, 127, reverbTime_dial->value() ) );
 	reverbDamp_dial->setValue( randNear( 0, 127, reverbDamp_dial->value() ) );
+	reverbMix_dial->setValue( randNear( 0, 127, reverbMix_dial->value() ) );
 	reverbDensity_dial->setValue( randNear( 0, 127, reverbDensity_dial->value() ) );
 	reverbLevel_verticalSlider->setValue( randNear( 0, 127, reverbLevel_verticalSlider->value() ) );
 }
@@ -1411,61 +1489,56 @@ void MainWindow::copyToClipboard() {
 	saveClipboard();
 }
 
-void MainWindow::copyEWIPatch() {
-	
+void MainWindow::copyEWIPatch( int p ) {
+	edit_patch = mididata->patches[p];
 	clipboard_listWidget->addItem( trimPatchName( edit_patch.parameters.name ) );
 	clipboard.append( edit_patch );
 	
 	saveClipboard();
 }
 
-void MainWindow::pasteEWIPatch() {
-
-	if (EWI_patch_group->checkedId() != -1 ) {
-		pastePatch_dialog *d = new pastePatch_dialog( (int) edit_patch.parameters.patch_num, &clipboard);
-		if (d->exec()) {
-			// set the new patch number in the patch
-			clipboard[d->chosenRow].parameters.patch_num = edit_patch.parameters.patch_num;
-			// copy into the working patch set and editing patch
-			patchSet[edit_patch.parameters.patch_num] = clipboard[d->chosenRow];
-			edit_patch = clipboard[d->chosenRow];
-			// and in the MIDI structure as we're not going to waste time re-reading it from the EWI
-			mididata->patches[edit_patch.parameters.patch_num] = clipboard[d->chosenRow];
-			// save in the EWI
-			mididata->sendPatch( edit_patch, EWI_SAVE ); 
-			// update the displayed list
-			EWI_patch_name[edit_patch.parameters.patch_num]->setText( trimPatchName( patchSet[edit_patch.parameters.patch_num].parameters.name ) );
-		}
-		delete d;
-	}
-
-}
-
-void MainWindow::renameEWIPatch() {
+void MainWindow::pasteEWIPatch( int p ) {
+	edit_patch = mididata->patches[p];
 	
-	if (EWI_patch_group->checkedId() != -1 ) {
-		bool ok;
-		QString text = trimPatchName( edit_patch.parameters.name );
-		QString new_name = QInputDialog::getText(this, "EWItool", "New Patch Name", QLineEdit::Normal, text, &ok);
-		if (!ok || new_name.isEmpty()) return;
-	
-		new_name = new_name.simplified();
-	
-		if (new_name.length() > EWI_PATCHNAME_LENGTH ) { 
-			QMessageBox::warning(this, tr("EWItool"),
-								 tr("Patch name too long!\nEnter up to %1 characters").arg(EWI_PATCHNAME_LENGTH));
-			
-			renameEWIPatch();
-		}
-		
-		EWI_patch_name[edit_patch.parameters.patch_num]->setText( new_name );
-		QByteArray ba = new_name.leftJustified( EWI_PATCHNAME_LENGTH, ' ' ).toLatin1();
-		memcpy( (void *) &edit_patch.parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
-		memcpy( (void *) &patchSet[edit_patch.parameters.patch_num].parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
-		memcpy( (void *) &mididata->patches[edit_patch.parameters.patch_num].parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
+	pastePatch_dialog *d = new pastePatch_dialog( (int) edit_patch.parameters.patch_num, &clipboard);
+	if (d->exec()) {
+		// set the new patch number in the patch
+		clipboard[d->chosenRow].parameters.patch_num = edit_patch.parameters.patch_num;
+		// copy into the working patch set and editing patch
+		patchSet[edit_patch.parameters.patch_num] = clipboard[d->chosenRow];
+		edit_patch = clipboard[d->chosenRow];
+		// and in the MIDI structure as we're not going to waste time re-reading it from the EWI
+		mididata->patches[edit_patch.parameters.patch_num] = clipboard[d->chosenRow];
 		// save in the EWI
 		mididata->sendPatch( edit_patch, EWI_SAVE ); 
+		// update the displayed list
+		EWIList->setLabel( p, trimPatchName( patchSet[edit_patch.parameters.patch_num].parameters.name ) );
 	}
+	delete d;
+}
+
+void MainWindow::renameEWIPatch( int p ) {
+	edit_patch = mididata->patches[p];
+	bool ok;
+	QString text = trimPatchName( edit_patch.parameters.name );
+	QString new_name = QInputDialog::getText(this, "EWItool", "New Patch Name", QLineEdit::Normal, text, &ok);
+	if (!ok || new_name.isEmpty()) return;
+
+	new_name = new_name.simplified();
+
+	if (new_name.length() > EWI_PATCHNAME_LENGTH ) { 
+		QMessageBox::warning(this, tr("EWItool"),
+							 tr("Patch name too long!\nEnter up to %1 characters").arg(EWI_PATCHNAME_LENGTH));
+		
+		renameEWIPatch( p );
+	}
+	EWIList->setLabel( p, new_name );
+	QByteArray ba = new_name.leftJustified( EWI_PATCHNAME_LENGTH, ' ' ).toLatin1();
+	memcpy( (void *) &edit_patch.parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
+	memcpy( (void *) &patchSet[edit_patch.parameters.patch_num].parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
+	memcpy( (void *) &mididata->patches[edit_patch.parameters.patch_num].parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
+	// save in the EWI
+	mididata->sendPatch( edit_patch, EWI_SAVE ); 
 }
 
 void MainWindow::clearClipboard() {
@@ -1612,6 +1685,13 @@ int MainWindow::randBetween( int min, int max ) {
 	
 }
 
+/**
+ * Returns current value randonly altered by up to 10% but within specified bounds
+ * @param min 
+ * @param max 
+ * @param currval 
+ * @return 
+ */
 int MainWindow::randNear( int min, int max, int currval ) {
 	
 	// a random 10% alteration of the value

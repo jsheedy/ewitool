@@ -8,23 +8,25 @@ mainwindow.cpp \
  midi_data.cpp \
  midiportsdialog.cpp \
  pastepatch_dialog.cpp \
- viewhex_dialog.cpp
+ viewhex_dialog.cpp \
+ ewilistwidget.cpp
 unix {
- SOURCES += midilistener.cpp
+    SOURCES += midilistener.cpp
 }
 HEADERS += mainwindow.h \
  midi_data.h \
  midiportsdialog.h \
  pastepatch_dialog.h \
- viewhex_dialog.h
+ viewhex_dialog.h \
+ ewilistwidget.h
 unix {
- HEADERS += midilistener.h
+    HEADERS += midilistener.h
 }
 unix {
-	LIBS += -lasound
+    LIBS += -lasound
 }
 win32 {
-	LIBS += -lwinmm
+    LIBS += -lwinmm
 }
 
 FORMS += mainwindow.ui \

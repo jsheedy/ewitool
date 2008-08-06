@@ -28,7 +28,7 @@ using namespace std;
 midi_data::midi_data() {
 	verboseMode = false;
 	createOurMIDIports();
-	last_patch_loaded = 0;
+	last_patch_loaded = -1;
 	connectedInPort = -1; connectedInClient = -1;
 	connectedOutPort = -1; connectedOutClient = -1;
 }
@@ -191,6 +191,28 @@ bool midi_data::requestPatch (char p) {
 	}
 	mymutex.unlock();
 
+#ifdef Q_WS_WIN	
+	// in win32 this is probably where we should add a fresh input buffer **********
+	// NOTE TO SELF: the win32 buffers etc should be held in the class, eg, so that
+	// we could unprepare and delete the used ones here before creating a new one
+	unsigned long result;
+	// get rid of the used buffer...
+	delete mmsg;
+	delete buf;
+	
+	// prepare and add a new buffer
+	mmsg = new char[WIN32_BUF_SIZE];
+	buf = new MIDIHDR;
+	lpMIDIHeader = buf;
+	buf->lpData = mmsg;
+	buf->dwBufferLength = WIN32_BUF_SIZE;
+	buf->dwFlags = 0;
+	
+	result = midiInPrepareHeader( seq.inHandle, lpMIDIHeader, sizeof(MIDIHDR) );
+	if (result != MMSYSERR_NOERROR) { win32PrintError( "Preparing header", result ); exit( result ); }
+	result = midiInAddBuffer( seq.inHandle, lpMIDIHeader, sizeof(MIDIHDR) );
+	if (result != MMSYSERR_NOERROR) { win32PrintError( "Adding buffer", result ); exit( result ); }
+#endif
 	// it seems the EWI can get out of sync - so retry if we didn't ge the patch back we asked for
 	if (last_patch_loaded != (int) p) requestPatch( p );
 	
@@ -476,7 +498,14 @@ static void CALLBACK win32MIDIinCallback( HMIDIIN handle, UINT uMsg, DWORD dwIns
 
 			case MIM_OPEN:         if (mdp->verboseMode) cout << "MIM_OPEN received"<<endl; break;
 			case MIM_CLOSE:        if (mdp->verboseMode) cout << "MIM_CLOSE received"<<endl; break;
-			case MIM_ERROR:        if (mdp->verboseMode) cout << "MIM_ERROR received"<<endl; break;
+			case MIM_ERROR:        
+				// don't know why, but sometimes we receive a string of MIM_ERRORs when 
+				// we should get the first patch...
+				if (mdp->verboseMode) cout << "MIM_ERROR received"<<endl; 
+				mdp->mymutex.lock();
+				mdp->sysexDone.wakeAll();
+				mdp->mymutex.unlock();
+				break;
 			case MIM_LONGERROR:    if (mdp->verboseMode) cout << "MIM_LONGERROR received"<<endl; break;
 			case MIM_MOREDATA:     if (mdp->verboseMode) cout << "MIM_MOREDATA received"<<endl; break;
 			default: 			   if (mdp->verboseMode) cout << "Unknown trigger received"<<endl;break;
@@ -516,10 +545,6 @@ void midi_data::connectInput( int in_client, int i_port ) {
 #endif
 
 #ifdef Q_WS_WIN
-	char		*mmsg[WIN32_NUM_BUFS]; 
-	MIDIHDR 	*buf[WIN32_NUM_BUFS];
-	LPMIDIHDR   lpMIDIHeader[WIN32_NUM_BUFS];
-	
 	unsigned long result;
 	
 	//cout << "About to try to open input port " << i_port << endl;
@@ -534,19 +559,17 @@ void midi_data::connectInput( int in_client, int i_port ) {
 		win32PrintError( "Opening MIDI In", result );
 		exit( -1 );
 	}
-	for (int b = 0; b < WIN32_NUM_BUFS; b++) {
-		mmsg[b] = new char[WIN32_BUF_SIZE];
-		buf[b] = new MIDIHDR;
-		lpMIDIHeader[b] = buf[b];
-		buf[b]->lpData = mmsg[b];
-		buf[b]->dwBufferLength = WIN32_BUF_SIZE;
-		buf[b]->dwFlags = 0;
+		mmsg = new char[WIN32_BUF_SIZE];
+		buf = new MIDIHDR;
+		lpMIDIHeader = buf;
+		buf->lpData = mmsg;
+		buf->dwBufferLength = WIN32_BUF_SIZE;
+		buf->dwFlags = 0;
 	
-		result = midiInPrepareHeader( seq.inHandle, lpMIDIHeader[b], sizeof(MIDIHDR) );
+		result = midiInPrepareHeader( seq.inHandle, lpMIDIHeader, sizeof(MIDIHDR) );
 		if (result != MMSYSERR_NOERROR) { cout << "Error1 preparing header " << result <<endl; win32PrintError( "Preparing header", result ); exit( result ); }
-		result = midiInAddBuffer( seq.inHandle, lpMIDIHeader[b], sizeof(MIDIHDR) );
+		result = midiInAddBuffer( seq.inHandle, lpMIDIHeader, sizeof(MIDIHDR) );
 		if (result != MMSYSERR_NOERROR) { cout << "Error adding buffer" << endl; win32PrintError( "Adding buffer", result ); exit( result ); }
-	}
 	
 	result = midiInStart( seq.inHandle );
 	if (result != MMSYSERR_NOERROR) { cout << "Error starting input" << endl; win32PrintError( "Starting Input", result ); exit( result ); }
@@ -559,6 +582,7 @@ void midi_data::connectInput( int in_client, int i_port ) {
 	QSettings settings( "EWItool", "EWItool" );
 	settings.setValue( "MIDI/InPort", i_port );
 	settings.setValue( "MIDI/InClient", in_client );
+	last_patch_loaded = -1;
 }
 
 void midi_data::disconnectInput() {
@@ -585,11 +609,16 @@ void midi_data::disconnectInput() {
 #ifdef Q_WS_WIN
 	unsigned long result;
 	
-	//result = midiInReset( seq.inHandle );
-	//if (result != MMSYSERR_NOERROR) win32PrintError( "Resetting Input", result );
+	result = midiInReset( seq.inHandle );
+	if (result != MMSYSERR_NOERROR) win32PrintError( "Resetting Input", result );
+	
+	result = midiInUnprepareHeader( seq.inHandle, lpMIDIHeader, sizeof(MIDIHDR) );
+	if (result != MMSYSERR_NOERROR) win32PrintError( "Unpreparing Input Header", result );
+	
 	result = midiInClose( seq.inHandle );
 	if (result != MMSYSERR_NOERROR) win32PrintError( "Closing Input", result );
-	if (verboseMode) cout << "Close MIDI Input port: " << connectedInPort << endl;
+	
+	if (verboseMode) cout << "Closed MIDI Input port: " << connectedInPort << endl;
 #endif
 	
 	connectedInClient = -1;

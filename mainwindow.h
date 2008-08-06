@@ -24,13 +24,18 @@
 	@author Steve Merrony <ewitool At merrony dot flyer dot co dot uk>
 */
 
+#include <QAction>
+#include <QContextMenuEvent>
 #include <QGridLayout>
 #include <QLCDNumber>
 
 #include "ui_mainwindow.h"
 
+#include "ewilistwidget.h"
 #include "midi_data.h"
 
+const QString	HELP_URL			= "http://code.google.com/p/ewitool/wiki/Using_EWItool";
+const QString	GPL3_URL			= "http://www.gnu.org/licenses/gpl-3.0.txt";
 const QString	EXPORT_DIR 			= "/export";
 const int		EXPORT_PATCH_NUM 	= 99;
 const QString 	CLIPBOARD_FILE  	= "/CLIPBOARD.CLP";
@@ -56,6 +61,8 @@ Q_OBJECT
 		void MIDIconnections();
 		void panic();
 		void fetchAllPatches();
+		void externalHelp();
+		void externalLicence();
 		void about();
 		// GUI actions
 		void saveClipboard();
@@ -64,9 +71,10 @@ Q_OBJECT
 		void revertPatch();
 		void patchSelected( int );
 		void displayPatch();
-		void copyEWIPatch();
-		void pasteEWIPatch();
-		void renameEWIPatch();
+		void displayPatch( int );
+		void copyEWIPatch( int );
+		void pasteEWIPatch( int );
+		void renameEWIPatch( int );
 		
 		void setList_chosen(QListWidgetItem *);
 		void sendLibraryToEWI();
@@ -91,6 +99,7 @@ Q_OBJECT
 		void setupPatchTab();
 		void setupLibraryTab();
 		void setupEWItab();
+		//void contextMenuEvent( QContextMenuEvent *);
 		void savePatchSetAs();
 		void printEWIpatches();
 		void printCurrentPatch();
@@ -99,6 +108,9 @@ Q_OBJECT
 		void deNoise();
 		void randomPatch();
 		void randomisePatch();
+		
+		QAction *editAct, *copyAct, *pasteAct, *renameAct;
+		QMenu *EWIcontextMenu;
 		
 		void loadClipboard();
 		void loadSettings();
@@ -116,6 +128,7 @@ Q_OBJECT
 		midi_port midiOut;
 		midi_data *mididata;
 		
+		EWIListWidget 	*EWIList;
 		QGridLayout		*EWI_grid;
 		QButtonGroup	*EWI_patch_group;
 		QPushButton		*EWI_patch_name[100];

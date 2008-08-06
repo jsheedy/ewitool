@@ -1,6 +1,6 @@
 /***************************************************************************
  *   Copyright (C) 2008 by Steve Merrony   *
- *   ewitool At merrony dot flyer dot co dot uk   *
+ *   steve@brahma   *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -17,35 +17,39 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
+#ifndef EWILISTWIDGET_H
+#define EWILISTWIDGET_H
 
-#include "pastepatch_dialog.h"
+#include <QPushButton>
+#include <QSignalMapper>
+#include <QString>
+#include <QWidget>
 
-pastePatch_dialog::pastePatch_dialog( int toOverwrite, QList<patch_t> *clipboard ) : QDialog() {
-	
-	setupUi( this );
-	
-	// copy clipboard names into list
-	for (int i = 0; i < clipboard->size(); i ++ ) {
-		QString *sname = new QString( clipboard->at(i).parameters.name );
-		sname->truncate( EWI_PATCHNAME_LENGTH );
-		listWidget->addItem( sname->trimmed() );
-	}
-	
-	lcdNumber->display( toOverwrite + 1 );
-	
-	connect( buttonBox, SIGNAL( accepted() ), this, SLOT( accept() ) );
-}
+/**
+	@author Steve Merrony <steve@brahma>
+*/
+class EWIListWidget : public QWidget {
+	Q_OBJECT
+			
+	public:
+    	EWIListWidget( QWidget *parent = 0 );
+    	~EWIListWidget();
+		void setLabel( int, QString );
+		QString getLabel( int );
+		
+	signals:
+		void edit_signal( int patch_num );
+		void copy_signal( int patch_num );
+		void paste_signal( int patch_num );
+		void rename_signal( int patch_num );
+		
+	private:
+		QList<QPushButton *>		patch_button_list;
+		QSignalMapper	*edit_signal_mapper,
+						*copy_signal_mapper,
+						*paste_signal_mapper,
+						*rename_signal_mapper;
+		//QPushButton		name_button[100];
+};
 
-
-pastePatch_dialog::~pastePatch_dialog()
-{
-}
-
-void pastePatch_dialog::accept() {
-	
-	chosenRow = listWidget->currentRow();
-	if (chosenRow == -1)
-		QDialog::done( false );
-	else
-		QDialog::done( true );
-}
+#endif

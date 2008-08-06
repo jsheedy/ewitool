@@ -33,12 +33,7 @@ using namespace std;
 int main(int argc, char *argv[])
 {
 	//Q_INIT_RESOURCE(application);
-#ifdef Q_WS_WIN
-	AllocConsole();
-	freopen("conin$", "r", stdin);
-	freopen("conout$", "w", stdout);
-	freopen("conout$", "w", stderr);
-#endif
+
 	midi_data *main_midi_data = new midi_data();
 	QString argStr;
 	QApplication app(argc, argv);
@@ -59,7 +54,15 @@ For more information please visit http://code.google.com/p/ewitool/ \n";
 			if (argStr.compare( "--verbose" ) == 0) { main_midi_data->verboseMode = TRUE; continue; }
 		}
 	}
-	
+#ifdef Q_WS_WIN
+	// if we're in win32 and user specifed verbose, then open a console for the messages
+	if (main_midi_data->verboseMode) {
+		AllocConsole();
+		freopen("conin$", "r", stdin);
+		freopen("conout$", "w", stdout);
+		freopen("conout$", "w", stderr);
+	}
+#endif
 	app.setQuitOnLastWindowClosed( true );
 	MainWindow mw( main_midi_data );
 	mw.show();
