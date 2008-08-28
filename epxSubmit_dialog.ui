@@ -1,0 +1,285 @@
+<ui version="4.0" >
+ <class>epxSubmit_Dialog</class>
+ <widget class="QDialog" name="epxSubmit_Dialog" >
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>470</width>
+    <height>409</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>EWItool - Submit to Patch Exchange</string>
+  </property>
+  <property name="toolTip" >
+   <string>Click if patch is not to be shared with other users.  Be sure to do this for any commercial patches!</string>
+  </property>
+  <widget class="QDialogButtonBox" name="buttonBox" >
+   <property name="geometry" >
+    <rect>
+     <x>100</x>
+     <y>360</y>
+     <width>341</width>
+     <height>32</height>
+    </rect>
+   </property>
+   <property name="orientation" >
+    <enum>Qt::Horizontal</enum>
+   </property>
+   <property name="standardButtons" >
+    <set>QDialogButtonBox::Cancel|QDialogButtonBox::NoButton|QDialogButtonBox::Ok</set>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label" >
+   <property name="geometry" >
+    <rect>
+     <x>20</x>
+     <y>20</y>
+     <width>471</width>
+     <height>51</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Please complete the fields below so your patch can be catalogued correctly</string>
+   </property>
+   <property name="wordWrap" >
+    <bool>true</bool>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_2" >
+   <property name="geometry" >
+    <rect>
+     <x>20</x>
+     <y>80</y>
+     <width>57</width>
+     <height>18</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Name:</string>
+   </property>
+  </widget>
+  <widget class="QLabel" name="name_label" >
+   <property name="geometry" >
+    <rect>
+     <x>120</x>
+     <y>79</y>
+     <width>321</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="frameShape" >
+    <enum>QFrame::Box</enum>
+   </property>
+   <property name="text" >
+    <string/>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_3" >
+   <property name="geometry" >
+    <rect>
+     <x>20</x>
+     <y>120</y>
+     <width>63</width>
+     <height>18</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Origin:</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="origin_lineEdit" >
+   <property name="geometry" >
+    <rect>
+     <x>120</x>
+     <y>115</y>
+     <width>321</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="toolTip" >
+    <string>E.g. 'Your Nickname' or 'Akai'</string>
+   </property>
+   <property name="text" >
+    <string/>
+   </property>
+   <property name="maxLength" >
+    <number>32</number>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_4" >
+   <property name="geometry" >
+    <rect>
+     <x>20</x>
+     <y>157</y>
+     <width>57</width>
+     <height>21</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Type:</string>
+   </property>
+  </widget>
+  <widget class="QComboBox" name="type_comboBox" >
+   <property name="geometry" >
+    <rect>
+     <x>120</x>
+     <y>150</y>
+     <width>201</width>
+     <height>26</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_5" >
+   <property name="geometry" >
+    <rect>
+     <x>20</x>
+     <y>190</y>
+     <width>81</width>
+     <height>18</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Description:</string>
+   </property>
+  </widget>
+  <widget class="QTextEdit" name="desc_textEdit" >
+   <property name="geometry" >
+    <rect>
+     <x>120</x>
+     <y>190</y>
+     <width>321</width>
+     <height>101</height>
+    </rect>
+   </property>
+   <property name="verticalScrollBarPolicy" >
+    <enum>Qt::ScrollBarAlwaysOff</enum>
+   </property>
+   <property name="horizontalScrollBarPolicy" >
+    <enum>Qt::ScrollBarAlwaysOff</enum>
+   </property>
+   <property name="tabStopWidth" >
+    <number>4</number>
+   </property>
+   <property name="acceptRichText" >
+    <bool>false</bool>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_6" >
+   <property name="geometry" >
+    <rect>
+     <x>20</x>
+     <y>310</y>
+     <width>57</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Tags:</string>
+   </property>
+  </widget>
+  <widget class="QLineEdit" name="tags_lineEdit" >
+   <property name="geometry" >
+    <rect>
+     <x>120</x>
+     <y>310</y>
+     <width>321</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="toolTip" >
+    <string>Key words associated with this patch</string>
+   </property>
+   <property name="maxLength" >
+    <number>128</number>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label_7" >
+   <property name="geometry" >
+    <rect>
+     <x>20</x>
+     <y>210</y>
+     <width>81</width>
+     <height>31</height>
+    </rect>
+   </property>
+   <property name="font" >
+    <font>
+     <pointsize>7</pointsize>
+    </font>
+   </property>
+   <property name="text" >
+    <string>(Optional - Max. 256 characters)</string>
+   </property>
+   <property name="wordWrap" >
+    <bool>true</bool>
+   </property>
+  </widget>
+  <widget class="QCheckBox" name="private_checkBox" >
+   <property name="geometry" >
+    <rect>
+     <x>360</x>
+     <y>150</y>
+     <width>83</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Private</string>
+   </property>
+  </widget>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>accepted()</signal>
+   <receiver>epxSubmit_Dialog</receiver>
+   <slot>accept()</slot>
+   <hints>
+    <hint type="sourcelabel" >
+     <x>248</x>
+     <y>254</y>
+    </hint>
+    <hint type="destinationlabel" >
+     <x>157</x>
+     <y>274</y>
+    </hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>rejected()</signal>
+   <receiver>epxSubmit_Dialog</receiver>
+   <slot>reject()</slot>
+   <hints>
+    <hint type="sourcelabel" >
+     <x>316</x>
+     <y>260</y>
+    </hint>
+    <hint type="destinationlabel" >
+     <x>286</x>
+     <y>274</y>
+    </hint>
+   </hints>
+  </connection>
+ </connections>
+ <designerdata>
+  <property name="gridDeltaX" >
+   <number>10</number>
+  </property>
+  <property name="gridDeltaY" >
+   <number>10</number>
+  </property>
+  <property name="gridSnapX" >
+   <bool>true</bool>
+  </property>
+  <property name="gridSnapY" >
+   <bool>true</bool>
+  </property>
+  <property name="gridVisible" >
+   <bool>true</bool>
+  </property>
+ </designerdata>
+</ui>

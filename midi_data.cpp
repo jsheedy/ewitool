@@ -664,4 +664,51 @@ QString midi_data::getPatchName( char *rawName ) {
 	return sname.trimmed();
 }
 
+/**
+ * Returns a human-readable Hex interpretation of the passed patch.
+ * @param bin_patch 
+ * @param with_spaces 
+ * @return 
+ */
+QString midi_data::hexify( char *bin_patch, bool with_spaces ) {
+	
+	QString hex_patch = "";
+	QString format;
+	int dlen;
+	
+	if (with_spaces) {
+		format = "%1 ";
+		dlen = 3;
+	}
+	else {
+		format = "%1";
+		dlen = 2;
+	}
+	for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) {
+		hex_patch += QString( format ).arg( (uint) bin_patch[i], 2, 16, QChar( '0' ) ).right( dlen );
+	}
+	//cout << "Hexified patch: " << qPrintable( hex_patch ) << endl;
+	return hex_patch;
+}
+
+patch_t midi_data::dehexify( QString hex_patch, bool with_spaces ) {
+	
+	patch_t dehexed;
+	QString onebyte;
+	bool ok;
+	int  bwidth;
+	
+	if (with_spaces)
+		bwidth = 3;
+	else
+		bwidth = 2;
+	
+	for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) {
+		onebyte = hex_patch.mid( i * bwidth, 2 );
+		dehexed.whole_patch[i] = onebyte.toInt( &ok, 16 );
+	}
+	
+	return dehexed;
+}
+
 

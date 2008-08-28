@@ -82,6 +82,7 @@ EWIListWidget::EWIListWidget( QWidget *parent )
 			EWI_grid->addWidget( name_button, row, (col*2)+1 );
 			// disable the context menu (until button is populated with a meaningful value via setLabel() )
 			name_button->setContextMenuPolicy( Qt::NoContextMenu );
+			//name_button->setAcceptDrops( true );
 		}
 	}
 	

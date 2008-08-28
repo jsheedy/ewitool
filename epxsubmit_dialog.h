@@ -1,6 +1,6 @@
 /***************************************************************************
  *   Copyright (C) 2008 by Steve Merrony   *
- *   ewitool At merrony dot flyer dot co dot uk   *
+ *   steve@brahma   *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -17,35 +17,41 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
+#ifndef EPXSUBMIT_DIALOG_H
+#define EPXSUBMIT_DIALOG_H
 
-#include "pastepatch_dialog.h"
+/**
+	@author Steve Merrony <steve@brahma>
+*/
 
-pastePatch_dialog::pastePatch_dialog( int toOverwrite, QList<patch_t> *clipboard ) : QDialog() {
-	
-	setupUi( this );
-	
-	// copy clipboard names into list
-	for (int i = 0; i < clipboard->size(); i++ ) {
-		QString *sname = new QString( clipboard->at(i).parameters.name );
-		sname->truncate( EWI_PATCHNAME_LENGTH );
-		listWidget->addItem( sname->trimmed() );
-	}
-	
-	lcdNumber->display( toOverwrite + 1 );
-	
-	connect( buttonBox, SIGNAL( accepted() ), this, SLOT( accept() ) );
-}
+#include <QDialog>
+#include <QSettings>
+#include <QStringList>
 
+#include "patchexchange.h"
 
-pastePatch_dialog::~pastePatch_dialog()
-{
-}
+#include "ui_epxSubmit_dialog.h"
 
-void pastePatch_dialog::accept() {
-	
-	chosenRow = listWidget->currentRow();
-	if (chosenRow == -1)
-		QDialog::done( false );
-	else
-		QDialog::done( true );
-}
+class epxSubmit_dialog : public QDialog, Ui::epxSubmit_Dialog {
+		Q_OBJECT
+
+	public:
+		epxSubmit_dialog( QString pname );
+		~epxSubmit_dialog();
+
+		QString p_origin;
+		QString p_private;
+		QString	p_type;
+		QString p_desc;
+		QString p_tags;
+		
+	private slots:
+		void accept();
+		void populateDropdowns( QStringList dd_data );
+		
+	private:
+		QSettings *settings;
+		patchExchange *epx;
+};
+
+#endif

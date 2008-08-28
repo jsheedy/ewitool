@@ -205,6 +205,9 @@ public:
 //	void CALLBACK win32MIDIinCallback( HMIDIIN, UINT, DWORD, DWORD, DWORD );
 //#endif
 	QString getPatchName( char * );
+	QString hexify( char *bin_patch, bool with_spaces = true );
+	patch_t dehexify( QString hex_patch, bool with_spaces );
+	
 	midi_seq  seq;
 	midi_port inp_port, out_port;
 	

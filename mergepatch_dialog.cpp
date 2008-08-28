@@ -1,6 +1,6 @@
 /***************************************************************************
  *   Copyright (C) 2008 by Steve Merrony   *
- *   ewitool At merrony dot flyer dot co dot uk   *
+ *   steve@brahma   *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -17,35 +17,33 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
+#include "mergepatch_dialog.h"
 
-#include "pastepatch_dialog.h"
-
-pastePatch_dialog::pastePatch_dialog( int toOverwrite, QList<patch_t> *clipboard ) : QDialog() {
-	
+mergePatch_dialog::mergePatch_dialog( patch_t ewi_patches[EWI_NUM_PATCHES] ) : QDialog()
+{
 	setupUi( this );
 	
-	// copy clipboard names into list
-	for (int i = 0; i < clipboard->size(); i++ ) {
-		QString *sname = new QString( clipboard->at(i).parameters.name );
+	// copy path names into list
+	for (int i = 0; i < EWI_NUM_PATCHES; i++ ) {
+		QString *sname = new QString( ewi_patches[i].parameters.name );
 		sname->truncate( EWI_PATCHNAME_LENGTH );
-		listWidget->addItem( sname->trimmed() );
+		patch_listWidget->addItem( sname->trimmed() );
 	}
-	
-	lcdNumber->display( toOverwrite + 1 );
 	
 	connect( buttonBox, SIGNAL( accepted() ), this, SLOT( accept() ) );
 }
 
 
-pastePatch_dialog::~pastePatch_dialog()
+mergePatch_dialog::~mergePatch_dialog()
 {
 }
 
-void pastePatch_dialog::accept() {
+void mergePatch_dialog::accept() {
 	
-	chosenRow = listWidget->currentRow();
+	chosenRow = patch_listWidget->currentRow();
 	if (chosenRow == -1)
 		QDialog::done( false );
 	else
 		QDialog::done( true );
 }
+

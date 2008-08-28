@@ -39,8 +39,11 @@ using namespace std;
 
 #include "mainwindow.h"
 				 
+#include "epxsubmit_dialog.h"
 #include "midiportsdialog.h"
+#include "mergepatch_dialog.h"
 #include "pastepatch_dialog.h"
+#include "settings_dialog.h"
 #include "viewhex_dialog.h"
 
 MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Qt::WFlags f )
@@ -56,10 +59,24 @@ MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Q
 	connect(action_Save, SIGNAL(triggered()), this, SLOT(save()));
 	connect(actionSave_As, SIGNAL(triggered()), this, SLOT(saveAs()));
 	connect(actionPrint, SIGNAL(triggered()), this, SLOT(print()));
+	connect(actionSe_ttings, SIGNAL(triggered()), this, SLOT(settings()));
 	connect(actionE_xit, SIGNAL(triggered()), this, SLOT(quit()));
+	
 	connect(action_Connections, SIGNAL(triggered()), this, SLOT(MIDIconnections()));
 	connect(action_Panic, SIGNAL(triggered()), this, SLOT(panic()));
 	connect(actionFetch_All_Patches, SIGNAL(triggered()), this, SLOT(fetchAllPatches()));
+	
+	menu_Patch->setEnabled( false );
+	connect(action_Patch_Save_As, SIGNAL(triggered()), this, SLOT(saveCurrentPatchAs()));
+	connect(action_Patch_Copy, SIGNAL(triggered()), this, SLOT(saveCurrentPatch()));
+	connect(action_Patch_Revert, SIGNAL(triggered()), this, SLOT(revertPatch()));
+	connect(action_Default_Patch, SIGNAL(triggered()), this, SLOT(defaultPatch()));
+	connect(action_Random_Patch, SIGNAL(triggered()), this, SLOT(randomPatch()));
+	connect(actionMake_Dry, SIGNAL(triggered()), this, SLOT(makeDry()));
+	connect(actionRemove_Noise, SIGNAL(triggered()), this, SLOT(deNoise()));
+	connect(action_Randomise_10, SIGNAL(triggered()), this, SLOT(randomisePatch()));
+	connect(action_Merge_With, SIGNAL(triggered()), this, SLOT(mergePatch()));
+	
 	connect(actionEWItool_Help, SIGNAL(triggered()), this, SLOT(externalHelp()));
 	connect(actionLicence, SIGNAL( triggered() ), this, SLOT( externalLicence() ) );
 	connect(action_About, SIGNAL(triggered()), this, SLOT(about()));
@@ -71,6 +88,7 @@ MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Q
 	
 	setupEWItab();
 	patch_tab->setEnabled( false );
+	epx_tab->setEnabled( false );  	// EPX tab disabled unless we can connect to EPX
 	setupPatchTab();
 	setupLibraryTab();
 }
@@ -96,7 +114,7 @@ void MainWindow::loadSettings() {
 		else {
 			QSettings settings( "EWItool", "EWItool" );
 			settings.setValue( "library/location", libraryLocation );
-			QDir::QDir( libraryLocation ).mkdir( EXPORT_DIR );		// create an export subdirectory
+			//QDir::QDir( libraryLocation ).mkdir( EXPORT_DIR );		// create an export subdirectory
 		}
 	} else {
 		libraryLocation = settings.value( "library/location" ).toString();
@@ -104,7 +122,22 @@ void MainWindow::loadSettings() {
 				  mididata->connectOutput( settings.value("MIDI/OutClient").toInt(), settings.value("MIDI/OutPort").toInt() );
 		if (settings.contains( "MIDI/InClient" ))
 			mididata->connectInput( settings.value("MIDI/InClient").toInt(), settings.value("MIDI/InPort").toInt() );
+		
+		if (settings.contains( "PatchExchange/UserID" )) {
+			setupEPXtab();
+		}
+		else {
+			//epx_tab->setEnabled( false );  // crashes on win32...
+		}
 	}
+}
+
+void MainWindow::settings() {
+	settings_dialog *d = new settings_dialog();
+	if (d->exec()) {
+		loadSettings();
+	}
+	delete d;
 }
 
 // tabSet handlers...
@@ -114,6 +147,11 @@ void MainWindow::tabChanged( int new_tab ) {
 	switch ( new_tab ) {
 		case LIBRARY_TAB:
 			action_Import->setEnabled( true );
+			actionSave_As->setEnabled( false );
+			actionPrint->setEnabled( true );
+			break;
+		case EPX_TAB:
+			action_Import->setEnabled( false );
 			actionSave_As->setEnabled( false );
 			actionPrint->setEnabled( false );
 			break;
@@ -257,8 +295,18 @@ void MainWindow::saveAs() {
 }
 
 void MainWindow::print() {
-	if (mainTabSet->currentWidget() == EWI_tab ) printEWIpatches();
-	if (mainTabSet->currentWidget() == patch_tab ) printCurrentPatch();
+	
+	switch (mainTabSet->currentIndex()) {
+		case LIBRARY_TAB:
+			printSetPatches();
+			break;
+		case EWI_TAB:
+			printEWIpatches();
+		 	break;
+		case PATCH_TAB:
+		 	printCurrentPatch();
+		 	break;
+	}
 }
 
 void MainWindow::quit() {
@@ -277,7 +325,7 @@ void MainWindow::about() {
 	QMessageBox::about(this,  
 					   "About EWItool",
 					   "<center><b>EWItool</b><br><br>"
-						"Version: 0.3<br><br>"
+						"Version: 0.4<br><br>"
 						"&copy; 2008 Steve Merrony<br><br>"
 						"Please see<br>"
 						"<a href='http://code.google.com/p/ewitool/'>http://code.google.com/p/ewitool/</a><br>"
@@ -439,12 +487,6 @@ void MainWindow::setupPatchTab() {
 	connect(bendStepMode_checkBox, SIGNAL(stateChanged(int)), this, SLOT(changeCheckBox(int)));
 	connect(bendRange_comboBox, SIGNAL(currentIndexChanged(int)), this, SLOT(changeGenericCombo(int)));
 	
-	// the action buttons
-	connect(copyCurrent_pushButton, SIGNAL(clicked()), this, SLOT(saveCurrentPatchAs()));
-	connect(saveCurrent_pushButton, SIGNAL(clicked()), this, SLOT(saveCurrentPatch()));
-	connect(revert_pushButton, SIGNAL(clicked()), this, SLOT(revertPatch()));
-	connect(specialCurrent_comboBox, SIGNAL( currentIndexChanged(int) ), this, SLOT(specialActionChosen(int)));
-	
 	// init the random # generator
 	srand( time( 0 ) );
 }
@@ -461,6 +503,7 @@ void MainWindow::setupLibraryTab() {
 	
 	// connect set library GUI objects to their slots
 	connect(setList_listWidget, SIGNAL(itemClicked( QListWidgetItem *)), this, SLOT( setList_chosen(QListWidgetItem *) ));
+	connect(deleteSet_pushButton, SIGNAL(clicked()), this, SLOT( deletePatchSet() ));
 	connect(sendLibraryToEWI_pushButton, SIGNAL(clicked()), this, SLOT( sendLibraryToEWI() ));
 	
 	connect(copyToClipboard_pushButton, SIGNAL(clicked()), this, SLOT( copyToClipboard() ));
@@ -470,6 +513,41 @@ void MainWindow::setupLibraryTab() {
 	connect(viewHexClipboard_pushButton, SIGNAL(clicked()), this, SLOT( viewHexClipboard() ));
 	connect(exportClipboard_pushButton, SIGNAL(clicked()), this, SLOT( exportClipboard() ));
 	
+}
+
+/**
+ * Here we _request_ the dropdown data for the EPX tab.
+ */
+void MainWindow::setupEPXtab() {
+	
+	QSettings settings( "EWItool", "EWItool" );
+	QString url = settings.value( "PatchExchange/Server" ).toString();
+	epx = new patchExchange( this );
+	// data returns
+	connect( epx, SIGNAL( dropdownData( QStringList ) ), this, SLOT( populateEPXtab( QStringList ) ) );
+	connect( epx, SIGNAL( insertResponse( QString ) ), this, SLOT( exportClipboardResponse( QString ) ) );
+	connect( epx, SIGNAL( queryResponse( QString ) ), this, SLOT( epxQueryResults( QString ) ) );
+	connect( epx, SIGNAL( detailsResponse( QString ) ), this, SLOT( epxDetailsResults( QString ) ) );
+	epx->getDropdowns( url );
+}
+
+/**
+ * The data for EPX have arrived - populate the tab
+ */
+void MainWindow::populateEPXtab( QStringList dropdown_data ) {
+	
+	QStringList sl = dropdown_data.at( 0 ).split( "," );
+	type_comboBox->addItems( sl );
+	sl = dropdown_data.at( 1 ).split( "," );
+	contributor_comboBox->addItems( sl );
+	sl = dropdown_data.at( 2 ).split( "," );
+	origin_comboBox->addItems( sl );
+	// widgets
+	connect( epxQuery_pushButton, SIGNAL( clicked() ), this, SLOT( epxQuery() ) );
+	connect( epxDelete_pushButton, SIGNAL( clicked() ), this, SLOT( epxDelete() ) );
+	connect( epxCopy_pushButton, SIGNAL( clicked() ), this, SLOT( epxCopy() ) );
+	connect( results_listWidget, SIGNAL( itemSelectionChanged() ), this, SLOT( epxChosen() ) ) ;
+	epx_tab->setEnabled( true );
 }
 
 void MainWindow::setupEWItab() {
@@ -563,6 +641,8 @@ void MainWindow::savePatchSet( QString fileName ) {
 	
 	statusBar()->showMessage(tr("File saved"), STATUS_MSG_TIMEOUT);
 }
+
+// Menu actions
 
 void MainWindow::saveCurrentPatchAs() {
 	
@@ -658,38 +738,63 @@ return;
 }
 
 /**
- * Prints a table of the patch numbers and names to fit on top half of an A4 page
+ * Prints a table of the current patch numbers and names to fit on top half of an A4 page
  */
-void MainWindow::printEWIpatches() {
+void MainWindow::printEWIpatches( ) {
 	
-	QPrinter printer;
-	//printer.setup( this );
-	
-	QPrintDialog *dialog = new QPrintDialog(&printer, this);
-	dialog->setWindowTitle(tr("Print EWI Patch Set"));
-	if (dialog->exec() != QDialog::Accepted) return;
+	printPatchList( true );
+}
 
-    // Create a QPainter object to draw on the printer
-	QPainter p(&printer);
+/**
+ * Prints a table of the patch numbers and names from a set to fit on top half of an A4 page
+ */
+void MainWindow::printSetPatches( ) {
 	
-	QString plab;	
-	
+	if (setContents_listWidget->count() > 1 )
+		printPatchList( false );	
+}
+
+/**
+ * Prints a table of the patch numbers and names from a set to fit on top half of an A4 page
+ */
+void MainWindow::printPatchList( bool current ) {
+
+	QPrinter printer;
+	QPrintDialog *dialog = new QPrintDialog( &printer, this );
+	dialog->setWindowTitle( tr( "Print EWI Patch Set" ) );
+
+	if ( dialog->exec() != QDialog::Accepted ) return;
+
+	// Create a QPainter object to draw on the printer
+	QPainter p( &printer );
+	QString plab;
+
 	const int half_inch = 36;
+	const int one_inch = 72;
 	const int col_spacing = 180;
 	const int line_height = 18;
-	
-	for (int row = 0; row < 25; row++) {
-		for (int col = 0; col < 4; col++) {
-			plab.setNum(col*25 + row + 1);
-			p.drawText( half_inch+(col*col_spacing), half_inch+(row*line_height), plab + ": " + EWIList->getLabel( row + 25*col ) );
+
+	// patch set name
+	if ( current )
+		p.drawText( half_inch, half_inch, "Current EWI Contents" );
+	else
+		p.drawText( half_inch, half_inch, setList_listWidget->currentItem()->text() );
+
+	for ( int row = 0; row < 25; row++ ) {
+		for ( int col = 0; col < 4; col++ ) {
+			plab.setNum( col*25 + row + 1 );
+
+			if ( current )
+				p.drawText( half_inch + ( col*col_spacing ), one_inch + ( row*line_height ), plab + ": " + EWIList->getLabel( row + 25*col ) );
+			else
+				p.drawText( half_inch + ( col*col_spacing ), one_inch + ( row*line_height ), plab + ": " + trimPatchName( patchSet[row + 25*col].parameters.name ) );
 		}
 	}
-
 	p.end();
 }
 
 /**
- * Prints a dump of the editor window, should fit on top half of an A4 page
+ * Prints a graphical dump of the editor window, should fit on top half of an A4 page
  */
 void MainWindow::printCurrentPatch() {
 	
@@ -888,6 +993,8 @@ void MainWindow::displayPatch() {
 	foreach (QWidget * current, pchildren) {
 		current->blockSignals( false );
 	}
+	
+	menu_Patch->setEnabled( true );
 }
 
 void MainWindow::displayPatch( int p ) {
@@ -1084,33 +1191,6 @@ void MainWindow::changeDial( int nl ) {
 	if ( obj->objectName() == "biteTremolo_dial" )			{ mididata->sendLiveControl( 0, 88, nl ); edit_patch.parameters.biteTremolo = nl; return; }
 	
 	cerr << "Oops - unhandled change for dial\n";
-}
-
-void MainWindow::specialActionChosen( int chosen_index ) {
-	
-	switch (chosen_index) {
-		case 0: break;
-		case 1:		// Default patch
-			defaultPatch();
-			break;
-		case 2:		// Make Dry
-			makeDry();
-			break;
-		case 3:		// Remove Noise
-			deNoise();
-			break;
-		case 4:
-			randomisePatch();
-			break;
-		case 5:
-			randomPatch();
-			break;
-		default:
-			cerr << "Unexpected Special... action index: " << chosen_index << endl;
-	}
-	
-	// reset widget now done
-	specialCurrent_comboBox->setCurrentIndex( 0 );
 }
 
 void MainWindow::defaultPatch() {
@@ -1436,6 +1516,104 @@ void MainWindow::randomisePatch() {
 	reverbLevel_verticalSlider->setValue( randNear( 0, 127, reverbLevel_verticalSlider->value() ) );
 }
 
+void MainWindow::mixInPatch( int mp, int pct ) {
+	//sc1_octave_comboBox->setCurrentIndex( 2 );		// we'll keep the base octave and semitone standard (8')
+	//osc1_semitone_comboBox->setCurrentIndex( 12 );
+	osc1_fine_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.fine, pct, osc1_fine_dial->value() ) );
+	osc1_beat_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.beat, pct, osc1_beat_dial->value() ) );
+	osc1_saw_verticalSlider->setValue( mixInts( mididata->patches[mp].parameters.osc1.sawtooth, pct,  osc1_saw_verticalSlider->value() ) );
+	osc1_tri_verticalSlider->setValue( mixInts( mididata->patches[mp].parameters.osc1.triangle, pct,  osc1_tri_verticalSlider->value() ) );
+	osc1_sqr_verticalSlider->setValue( mixInts( mididata->patches[mp].parameters.osc1.square, pct,  osc1_sqr_verticalSlider->value() ) );
+	osc1_pulseWidth_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.pulseWidth, pct,  osc1_pulseWidth_dial->value() ) );
+	osc1_PWMfreq_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.PWMfreq, pct,  osc1_PWMfreq_dial->value() ) );
+	osc1_PWMdepth_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.PWMdepth, pct,  osc1_PWMdepth_dial->value() ) );
+	osc1_sweepTime_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.sweepTime, pct,  osc1_sweepTime_dial->value() ) );
+	osc1_sweepDepth_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.sweepDepth, pct,  osc1_sweepDepth_dial->value() ) );
+	osc1_breathAttain_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.breathAttain, pct,  osc1_breathAttain_dial->value() ) );
+	osc1_breathDepth_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.breathDepth, pct,  osc1_breathDepth_dial->value() ) );
+	osc1_breathThresh_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.breathThreshold, pct,  osc1_breathThresh_dial->value() ) );
+	osc1_breathCurve_dial->setValue( mixInts( mididata->patches[mp].parameters.osc1.breathCurve, pct,  osc1_breathCurve_dial->value() ) );
+	osc1_level_verticalSlider->setValue(mixInts( mididata->patches[mp].parameters.osc1.level, pct,  osc1_level_verticalSlider->value() ) );  
+
+	//osc2_octave_comboBox->setCurrentIndex( randNear( 0, 4 ) );
+	//osc2_semitone_comboBox->setCurrentIndex( 12 );		//maybe keep this sane for now
+	osc2_fine_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.fine, pct, osc2_fine_dial->value() ) );
+	osc2_beat_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.beat, pct,  osc2_beat_dial->value() ) );
+	osc2_saw_verticalSlider->setValue( mixInts( mididata->patches[mp].parameters.osc2.sawtooth, pct,  osc2_saw_verticalSlider->value() ) );
+	osc2_tri_verticalSlider->setValue( mixInts( mididata->patches[mp].parameters.osc2.triangle, pct,  osc2_tri_verticalSlider->value() ) );
+	osc2_sqr_verticalSlider->setValue( mixInts( mididata->patches[mp].parameters.osc2.square, pct,  osc2_sqr_verticalSlider->value() ) );
+	osc2_pulseWidth_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.pulseWidth, pct,  osc2_pulseWidth_dial->value() ) );
+	osc2_PWMfreq_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.PWMfreq, pct,  osc2_PWMfreq_dial->value() ) );
+	osc2_PWMdepth_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.PWMdepth, pct,  osc2_PWMdepth_dial->value() ) );
+	osc2_sweepTime_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.sweepTime, pct,  osc2_sweepTime_dial->value() ) );
+	osc2_sweepDepth_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.sweepDepth, pct,  osc2_sweepDepth_dial->value() ) );
+	osc2_breathAttain_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.breathAttain, pct,  osc2_breathAttain_dial->value() ) );
+	osc2_breathDepth_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.breathDepth, pct,  osc2_breathDepth_dial->value() ) );
+	osc2_breathThresh_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.breathThreshold, pct,  osc2_breathThresh_dial->value() ) );
+	osc2_breathCurve_dial->setValue( mixInts( mididata->patches[mp].parameters.osc2.breathCurve, pct,  osc2_breathCurve_dial->value() ) );
+	osc2_level_verticalSlider->setValue(mixInts( mididata->patches[mp].parameters.osc2.level, pct,  osc2_level_verticalSlider->value() ) );  
+	
+	//formantFilter_comboBox->setCurrentIndex( randNear( 0, 2 ) );
+	//keyTrigger_comboBox->setCurrentIndex( randNear( 0, 1 ) );
+	// 
+	//oscFilterLink_comboBox->setCurrentIndex( randNear( 0, 2 ) );
+	
+	//oscfilter1_mode_comboBox->setCurrentIndex( randNear( 0, 4 ) ); 
+	oscfilter1_freq_horizontalSlider->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.freq, pct,  oscfilter1_freq_horizontalSlider->value() ) );
+	oscfilter1_Q_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.Q, pct,  oscfilter1_Q_dial->value() ) );
+	oscfilter1_keyFollow_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.keyFollow, pct,  oscfilter1_keyFollow_dial->value() ) );
+	oscfilter1_breathMod_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.breathMod, pct,  oscfilter1_breathMod_dial->value() ) );
+	oscfilter1_breathCurve_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.breathCurve, pct,  oscfilter1_breathCurve_dial->value() ) );
+	oscfilter1_LFOfreq_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.LFOfreq, pct,  oscfilter1_LFOfreq_dial->value() ) );
+	oscfilter1_LFOdepth_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.LFOdepth, pct,  oscfilter1_LFOdepth_dial->value() ) );
+	oscfilter1_LFObreath_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.LFObreath, pct,  oscfilter1_LFObreath_dial->value() ) );
+	oscfilter1_LFOthreshold_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.LFOthreshold, pct,  oscfilter1_LFOthreshold_dial->value() ) );
+	oscfilter1_sweepTime_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.sweepTime, pct,  oscfilter1_sweepTime_dial->value() ) );
+	oscfilter1_sweepDepth_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter1.sweepDepth, pct,  oscfilter1_sweepDepth_dial->value() ) );
+			
+	//oscfilter2_mode_comboBox->setCurrentIndex( randNear( 0, 4 ) ); 
+	oscfilter2_freq_horizontalSlider->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.freq, pct,  oscfilter2_freq_horizontalSlider->value() ) );
+	oscfilter2_Q_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.Q, pct,  oscfilter2_Q_dial->value() ) );
+	oscfilter2_keyFollow_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.keyFollow, pct,  oscfilter2_keyFollow_dial->value() ) );
+	oscfilter2_breathMod_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.breathMod, pct,  oscfilter2_breathMod_dial->value() ) );
+	oscfilter2_breathCurve_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.breathCurve, pct,  oscfilter2_breathCurve_dial->value() ) );
+	oscfilter2_LFOfreq_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.LFOfreq, pct,  oscfilter2_LFOfreq_dial->value() ) );
+	oscfilter2_LFOdepth_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.LFOdepth, pct,  oscfilter2_LFOdepth_dial->value() ) );
+	oscfilter2_LFObreath_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.LFObreath, pct,  oscfilter2_LFObreath_dial->value() ) );
+	oscfilter2_LFOthreshold_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.LFOthreshold, pct,  oscfilter2_LFOthreshold_dial->value() ) );
+	oscfilter2_sweepTime_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.sweepTime, pct,  oscfilter2_sweepTime_dial->value() ) );
+	oscfilter2_sweepDepth_dial->setValue( mixInts( mididata->patches[mp].parameters.oscFilter2.sweepDepth, pct,  oscfilter2_sweepDepth_dial->value() ) );
+	
+	chorusDelay1_dial->setValue( mixInts( mididata->patches[mp].parameters.chorusDelay1, pct,  chorusDelay1_dial->value() ) );
+	chorusModLev1_dial->setValue( mixInts( mididata->patches[mp].parameters.chorusModLev1, pct,  chorusModLev1_dial->value() ) );
+	chorusWetLev1_dial->setValue( mixInts( mididata->patches[mp].parameters.chorusWetLev1, pct,  chorusWetLev1_dial->value() ) );
+	chorusDelay2_dial->setValue( mixInts( mididata->patches[mp].parameters.chorusDelay2, pct,  chorusDelay2_dial->value() ) );
+	chorusModLev2_dial->setValue( mixInts( mididata->patches[mp].parameters.chorusModLev2, pct,  chorusModLev2_dial->value() ) );
+	chorusWetLev2_dial->setValue( mixInts( mididata->patches[mp].parameters.chorusWetLev2, pct,  chorusWetLev2_dial->value() ) );
+	chorusDryLevel_dial->setValue( mixInts( mididata->patches[mp].parameters.chorusDryLevel, pct,  chorusDryLevel_dial->value() ) );
+	chorusFeedback_dial->setValue( mixInts( mididata->patches[mp].parameters.chorusFeedback, pct,  chorusFeedback_dial->value() ) );
+	chorusLFOfreq_horizontalSlider->setValue( mixInts( mididata->patches[mp].parameters.chorusLFOfreq, pct,  chorusLFOfreq_horizontalSlider->value() ) );
+	delayTime_dial->setValue( mixInts( mididata->patches[mp].parameters.delayTime, pct,  delayTime_dial->value() ) );
+	delayDamp_dial->setValue( mixInts( mididata->patches[mp].parameters.delayDamp, pct,  delayDamp_dial->value() ) );
+	delayFeedback_dial->setValue( mixInts( mididata->patches[mp].parameters.delayFeedback, pct,  delayFeedback_dial->value() ) );
+	delayMix_dial->setValue( mixInts( mididata->patches[mp].parameters.delayMix, pct,  delayMix_dial->value() ) );
+	delayLevel_verticalSlider->setValue( mixInts( mididata->patches[mp].parameters.delayLevel, pct,  delayLevel_verticalSlider->value() ) );
+	reverbTime_dial->setValue( mixInts( mididata->patches[mp].parameters.reverbTime, pct,  reverbTime_dial->value() ) );
+	reverbDamp_dial->setValue( mixInts( mididata->patches[mp].parameters.reverbDamp, pct,  reverbDamp_dial->value() ) );
+	reverbMix_dial->setValue( mixInts( mididata->patches[mp].parameters.reverbMix, pct,  reverbMix_dial->value() ) );
+	reverbDensity_dial->setValue( mixInts( mididata->patches[mp].parameters.reverbDensity, pct,  reverbDensity_dial->value() ) );
+	reverbLevel_verticalSlider->setValue( mixInts( mididata->patches[mp].parameters.reverbLevel, pct,  reverbLevel_verticalSlider->value() ) );
+}
+
+void MainWindow::mergePatch() {
+	
+	mergePatch_dialog *d = new mergePatch_dialog( mididata->patches );
+	if (d->exec()) {
+		mixInPatch( d->chosenRow, 50 );
+	}
+	delete d;
+}
+
 // library handling...
 
 void MainWindow::setList_chosen(QListWidgetItem *item) {
@@ -1464,8 +1642,48 @@ void MainWindow::setList_chosen(QListWidgetItem *item) {
 	QApplication::restoreOverrideCursor();
 	
 	libraryName = item->text();
+	deleteSet_pushButton->setEnabled( true );
 	sendLibraryToEWI_pushButton->setEnabled( true );
 }
+
+void MainWindow::deletePatchSet() {
+	
+	if (QMessageBox::question (this, "EWItool",
+		tr ("Do you realy want to delete this Patch Set from disk?" ),
+		QMessageBox::No | QMessageBox::Yes
+							  ) ==  QMessageBox::No) return;
+	
+	QString file_name = libraryLocation + "/" + libraryName;
+	QFile file( file_name );
+	file.remove();
+	setupLibraryTab();
+}
+
+void MainWindow::sendLibraryToEWI() {
+
+	if (QMessageBox::question( this, "EWItool",
+		tr( "This will overwrite all patches in the EWI with the chosen library.\n"
+				"Do you really want to do this?" ),
+		QMessageBox::No | QMessageBox::Yes
+							 )
+		   ==
+		   QMessageBox::No) return;
+	
+	QProgressDialog progressDialog (tr ("Sending Library to the EWI"), 0, 1, 100,this);
+	progressDialog.setWindowTitle (tr ("Sending Patches"));
+
+	// we have to send one patch at a time (ALSA size limitation)
+	for (int p = 0; p < EWI_NUM_PATCHES; p++) {
+		mididata->sendPatch( patchSet[p], EWI_SAVE );
+		progressDialog.setValue( p );
+		progressDialog.setLabelText(tr("Sending patch number %1 of %2...").arg(p).arg( EWI_NUM_PATCHES ));
+		mididata->patches[p] = patchSet[p];  // copy into mididata
+		EWI_patch_name[p]->setText( trimPatchName( mididata->patches[p].parameters.name ) );  // update EWI tab labels
+		qApp->processEvents();
+	}
+
+}
+
 
 void MainWindow::copyToClipboard() {
 	
@@ -1608,67 +1826,166 @@ void MainWindow::viewHexClipboard() {
 		const char *raw_patch = &clipboard.at( clipboard_listWidget->currentRow() ).whole_patch[0];
 		QString hex_patch;
 	
-		for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) {
-			hex_patch += QString( "%1 " ).arg( (uint) raw_patch[i], 2, 16, QChar( '0' ) ).right( 3 );
-		}
+		hex_patch = mididata->hexify( (char *) raw_patch, true );
 		viewHex_dialog *h = new viewHex_dialog( hex_patch );
 		h->exec();
 	}
 }
 
+// EPX actions
+
+/**
+ * Export a patch from the Clipboard to the Patch Exchange
+ */
 void MainWindow::exportClipboard() {
-	// exports an item from the Clipboard into the "export" subdir
 	if (clipboard.count() > 0 && clipboard_listWidget->currentRow() > -1) {
-	
-			patch_t e_patch;
-	
-		QString e_name = libraryLocation + EXPORT_DIR + "/" + clipboard_listWidget->currentItem()->text() + LIBRARY_EXTENSION;
-		QFile file(e_name);
-		if (!file.open(QFile::WriteOnly)) {
-			QMessageBox::warning(this, tr("EWItool"),
-								 tr("Cannot write file %1:\n%2.")
-										 .arg(e_name)
-										 .arg(file.errorString()));
-			return;
-		}
+		
+		patch_t e_patch;
 	
 		e_patch = clipboard.at( clipboard_listWidget->currentRow() );
-		e_patch.parameters.mode = EWI_EDIT;
-		e_patch.parameters.patch_num = 0x00;
-		
-		QDataStream out(&file);
-		out.writeRawData( e_patch.whole_patch, EWI_PATCH_LENGTH );
-		out.writeRawData( e_patch.whole_patch, EWI_PATCH_LENGTH );
-		QMessageBox::information(this, tr("EWItool"),
-							 	 tr("Patch exported to ") +
-								 e_name );
+		// get extra info for EPX from the user
+		epxSubmit_dialog *d = new epxSubmit_dialog( trimPatchName( e_patch.parameters.name ) );
+		if (d->exec()) {
+			// submit the patch
+			e_patch.parameters.mode = EWI_EDIT;
+			e_patch.parameters.patch_num = 0x00;
+			QSettings *settings = new QSettings( "EWItool", "EWItool" );
+			epx->insertPatch( 
+				settings->value( "PatchExchange/Server" ).toString(),
+				settings->value( "PatchExchange/UserID" ).toString(),
+				settings->value( "PatchExchange/Password" ).toString(),
+				trimPatchName( e_patch.parameters.name ),
+				d->p_origin,
+				d->p_type, 
+				d->p_desc,
+				d->p_private,
+				d->p_tags,
+				mididata->hexify( e_patch.whole_patch, false )
+			);
+			
+		}
+		delete d;
 	}
 }
 
-void MainWindow::sendLibraryToEWI() {
-
-	if (QMessageBox::question( this, "EWItool",
-									 tr( "This will overwrite all patches in the EWI with the chosen library.\n"
-											 "Do you really want to do this?" ),
-									 QMessageBox::No | QMessageBox::Yes
-								   )
-		   ==
-		   QMessageBox::No) return;
+void MainWindow::exportClipboardResponse( QString response ) {
 	
-	QProgressDialog progressDialog (tr ("Sending Library to the EWI"), 0, 1, 100,this);
-	progressDialog.setWindowTitle (tr ("Sending Patches"));
-
-	// we have to send one patch at a time (ALSA size limitation)
-	for (int p = 0; p < EWI_NUM_PATCHES; p++) {
-		mididata->sendPatch( patchSet[p], EWI_SAVE );
-		progressDialog.setValue( p );
-		progressDialog.setLabelText(tr("Sending patch number %1 of %2...").arg(p).arg( EWI_NUM_PATCHES ));
-		mididata->patches[p] = patchSet[p];  // copy into mididata
-		EWI_patch_name[p]->setText( trimPatchName( mididata->patches[p].parameters.name ) );  // update EWI tab labels
-		qApp->processEvents();
+	// cout << "Export response: " << qPrintable( response ) << endl;
+	if (response.startsWith( "Resource id #" )) { 	// success
+		statusBar()->showMessage(tr("Patch Succesfully sent to EWI Patch Exchange - Thank You"), STATUS_MSG_TIMEOUT);
 	}
-
+	else {
+		// duplicate?
+		if (response.contains( "duplicate key" )) {
+			QMessageBox::warning( this, "EWItool",
+								  tr( "Export Error\n\nThat patch is already in the Exchange" ) );
+		}
+		else {	// some other error
+			QMessageBox::warning( this, "EWItool",
+								  tr( "Export Error\n\n" ) + 
+										  response.mid( response.indexOf( "ERROR:" ) + 7,
+										  response.indexOf( " in <b>" ) - response.indexOf( "ERROR:" ) + 7) );
+		}
+	}
 }
+
+void MainWindow::epxQuery() {
+	
+	QSettings *settings = new QSettings( "EWItool", "EWItool" );
+	epx->query( settings->value( "PatchExchange/Server" ).toString(),
+				settings->value( "PatchExchange/UserID" ).toString(),
+				settings->value( "PatchExchange/Password" ).toString(),
+				type_comboBox->currentText(),
+				since_comboBox->currentText(),
+				contributor_comboBox->currentText(),
+				origin_comboBox->currentText(),
+				tags_lineEdit->text() );
+	
+	epxCopy_pushButton->setEnabled( false );
+	epxDelete_pushButton->setEnabled( false );
+}
+
+void MainWindow::epxQueryResults( QString patch_list ) {
+	
+	int id;
+	
+	results_listWidget->clear();
+	epx_ids.clear();
+	
+	QStringList pl = patch_list.split( "\n" );
+	for (int i = 0; i < pl.size(); i++ ) {
+		results_listWidget->addItem( pl.at(i).left( pl.at(i).lastIndexOf( "," ) ) );
+		id = pl.at(i).mid( pl.at(i).lastIndexOf( "," ) + 1 ).toInt();
+		epx_ids.append( id );
+	}
+}
+
+void MainWindow::epxChosen() {
+	
+	int id;
+	
+	QSettings *settings = new QSettings( "EWItool", "EWItool" );
+	id = epx_ids.at( results_listWidget->currentRow() );
+	epx->getDetails( settings->value( "PatchExchange/Server" ).toString(),
+					 settings->value( "PatchExchange/UserID" ).toString(),
+					 settings->value( "PatchExchange/Password" ).toString(),
+					 id
+				   );
+}
+
+void MainWindow::epxDetailsResults( QString details ) {
+	
+	if (details.contains( "," )) {
+	QStringList parms = details.split( "," );
+	name_label->setText( parms.at( 0 ) );
+	contributor_label->setText( parms.at( 1 ) );
+	originator_label->setText( parms.at( 2 ) );
+	epx_hex_patch = parms.at( 3 );
+	type_label->setText( parms.at( 4 ) );
+	desc_label->setText( parms.at( 5 ) );
+	added_label->setText( parms.at( 6 ) );
+	if (parms.at(7) == "f")
+		private_label->setText( "public" );
+	else
+		private_label->setText( "private" );
+	tags_label->setText( parms.at( 8 ) );
+	
+	epxCopy_pushButton->setEnabled( true );
+	epxDelete_pushButton->setEnabled( true );
+	}
+}
+
+void MainWindow::epxDelete() {
+	
+	if ( results_listWidget->currentRow() >= 0 ) {
+	
+	QSettings *settings = new QSettings( "EWItool", "EWItool" );
+	int id = epx_ids.at( results_listWidget->currentRow() );
+	epx->deletePatch( settings->value( "PatchExchange/Server" ).toString(),
+					 settings->value( "PatchExchange/UserID" ).toString(),
+					 settings->value( "PatchExchange/Password" ).toString(),
+					 id
+				   );
+	epx_ids.removeAt( id );
+	//results_listWidget->setCurrentRow( 0 );
+	// force a re-query
+	epxQuery();
+	
+	}
+}
+
+void MainWindow::epxCopy() {
+	
+	patch_t new_patch;
+	
+	new_patch = mididata->dehexify( epx_hex_patch, false );
+	
+	clipboard_listWidget->addItem( trimPatchName( new_patch.parameters.name ) );
+	clipboard.append( new_patch );
+	saveClipboard();
+}
+
+
 
 // utility functions...
 
@@ -1707,4 +2024,15 @@ int MainWindow::randNear( int min, int max, int currval ) {
 	
 }
 
-
+/**
+ * Returns pct of p1 plus 1-pct of p2 i.e. avergage if pct == 50
+ * @param p1 
+ * @param pct 
+ * @param p2 
+ * @return 
+ */
+int MainWindow::mixInts( int p1, int pct, int p2 ) {
+	
+	return ((p1 * pct) / 100) + ((p2 * (100-pct)) / 100 );
+	
+}

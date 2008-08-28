@@ -33,17 +33,19 @@
 
 #include "ewilistwidget.h"
 #include "midi_data.h"
+#include "patchexchange.h"
 
 const QString	HELP_URL			= "http://code.google.com/p/ewitool/wiki/Using_EWItool";
 const QString	GPL3_URL			= "http://www.gnu.org/licenses/gpl-3.0.txt";
-const QString	EXPORT_DIR 			= "/export";
+//const QString	EXPORT_DIR 			= "/export";
 const int		EXPORT_PATCH_NUM 	= 99;
 const QString 	CLIPBOARD_FILE  	= "/CLIPBOARD.CLP";
 const QString	LIBRARY_EXTENSION	= ".syx";
 const int		STATUS_MSG_TIMEOUT 	= 3000;
 const int		LIBRARY_TAB			= 0;
-const int		EWI_TAB				= 1;
-const int		PATCH_TAB			= 2;
+const int		EPX_TAB				= 1;
+const int		EWI_TAB				= 2;
+const int		PATCH_TAB			= 3;
 
 class MainWindow: public QMainWindow, public Ui::MainWindow{
 Q_OBJECT
@@ -57,6 +59,7 @@ Q_OBJECT
 		void save();
 		void saveAs();
 		void print();
+		void settings();
 		void quit();
 		void MIDIconnections();
 		void panic();
@@ -64,6 +67,8 @@ Q_OBJECT
 		void externalHelp();
 		void externalLicence();
 		void about();
+		// EPX
+		void populateEPXtab( QStringList dropdown_data );
 		// GUI actions
 		void saveClipboard();
 		void saveCurrentPatchAs();
@@ -76,7 +81,16 @@ Q_OBJECT
 		void pasteEWIPatch( int );
 		void renameEWIPatch( int );
 		
+		void defaultPatch();
+		void makeDry();
+		void deNoise();
+		void randomPatch();
+		void randomisePatch();
+		void mergePatch();
+		void mixInPatch( int, int );
+		
 		void setList_chosen(QListWidgetItem *);
+		void deletePatchSet();
 		void sendLibraryToEWI();
 		void copyToClipboard();
 		void clearClipboard();
@@ -84,6 +98,13 @@ Q_OBJECT
 		void renameClipboard();
 		void viewHexClipboard();
 		void exportClipboard();
+		void exportClipboardResponse( QString response );
+		void epxQuery();
+		void epxQueryResults( QString patch_list );
+		void epxChosen();
+		void epxDetailsResults( QString details );
+		void epxDelete();
+		void epxCopy();
 				
 		void changeSlider( int );
 		void changeDial( int );
@@ -91,24 +112,21 @@ Q_OBJECT
 		void changeSemitoneCombo( int );
 		void changeGenericCombo( int );
 		void changeCheckBox( int );
-		void specialActionChosen(int);
 		
 		void tabChanged( int );
 	
 	private:
 		void setupPatchTab();
+		void setupEPXtab();
 		void setupLibraryTab();
 		void setupEWItab();
 		//void contextMenuEvent( QContextMenuEvent *);
 		void savePatchSetAs();
 		void printEWIpatches();
+		void printSetPatches();
 		void printCurrentPatch();
-		void defaultPatch();
-		void makeDry();
-		void deNoise();
-		void randomPatch();
-		void randomisePatch();
-		
+		void printPatchList( bool current );
+				
 		QAction *editAct, *copyAct, *pasteAct, *renameAct;
 		QMenu *EWIcontextMenu;
 		
@@ -119,9 +137,14 @@ Q_OBJECT
 		QString trimPatchName( char * );
 		int randBetween( int, int );
 		int randNear( int, int, int );
+		int mixInts( int, int, int );
 		
 		QString		libraryLocation;
 		QString		libraryName;
+		patchExchange *epx;
+		QList<int>	epx_ids;
+		int			epx_details_id;
+		QString		epx_hex_patch;
 		//QString		currentPatchSetName;
 		
 		midi_seq  seq;
