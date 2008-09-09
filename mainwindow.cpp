@@ -55,33 +55,34 @@ MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Q
 	
 	setupUi( this );
 	// connect the menu items to their slots
-	connect(action_Import, SIGNAL(triggered()), this, SLOT(import()));
-	connect(action_Save, SIGNAL(triggered()), this, SLOT(save()));
-	connect(actionSave_As, SIGNAL(triggered()), this, SLOT(saveAs()));
-	connect(actionPrint, SIGNAL(triggered()), this, SLOT(print()));
-	connect(actionSe_ttings, SIGNAL(triggered()), this, SLOT(settings()));
-	connect(actionE_xit, SIGNAL(triggered()), this, SLOT(quit()));
+	connect(action_Import, 			SIGNAL(triggered()), this, SLOT(import()));
+	connect(action_Save, 			SIGNAL(triggered()), this, SLOT(save()));
+	connect(actionSave_As, 			SIGNAL(triggered()), this, SLOT(saveAs()));
+	connect(actionPrint, 			SIGNAL(triggered()), this, SLOT(print()));
+	connect(actionSe_ttings, 		SIGNAL(triggered()), this, SLOT(settings()));
+	connect(actionE_xit, 			SIGNAL(triggered()), this, SLOT(quit()));
 	
-	connect(action_Connections, SIGNAL(triggered()), this, SLOT(MIDIconnections()));
-	connect(action_Panic, SIGNAL(triggered()), this, SLOT(panic()));
+	connect(action_Connections, 	SIGNAL(triggered()), this, SLOT(MIDIconnections()));
+	connect(action_Panic, 			SIGNAL(triggered()), this, SLOT(panic()));
 	connect(actionFetch_All_Patches, SIGNAL(triggered()), this, SLOT(fetchAllPatches()));
 	
 	menu_Patch->setEnabled( false );
-	connect(action_Patch_Save_As, SIGNAL(triggered()), this, SLOT(saveCurrentPatchAs()));
-	connect(action_Patch_Copy, SIGNAL(triggered()), this, SLOT(saveCurrentPatch()));
-	connect(action_Patch_Revert, SIGNAL(triggered()), this, SLOT(revertPatch()));
-	connect(action_Default_Patch, SIGNAL(triggered()), this, SLOT(defaultPatch()));
-	connect(action_Random_Patch, SIGNAL(triggered()), this, SLOT(randomPatch()));
-	connect(actionMake_Dry, SIGNAL(triggered()), this, SLOT(makeDry()));
-	connect(actionRemove_Noise, SIGNAL(triggered()), this, SLOT(deNoise()));
-	connect(action_Randomise_10, SIGNAL(triggered()), this, SLOT(randomisePatch()));
-	connect(action_Merge_With, SIGNAL(triggered()), this, SLOT(mergePatch()));
+	connect(action_Patch_Save, 		SIGNAL(triggered()), this, SLOT(saveCurrentPatch()));
+	connect(action_Patch_Save_As, 	SIGNAL(triggered()), this, SLOT(saveCurrentPatchAs()));
+	connect(action_Patch_Copy, 		SIGNAL(triggered()), this, SLOT(saveCurrentPatch()));
+	connect(action_Patch_Revert, 	SIGNAL(triggered()), this, SLOT(revertPatch()));
+	connect(action_Default_Patch, 	SIGNAL(triggered()), this, SLOT(defaultPatch()));
+	connect(action_Random_Patch, 	SIGNAL(triggered()), this, SLOT(randomPatch()));
+	connect(actionMake_Dry, 		SIGNAL(triggered()), this, SLOT(makeDry()));
+	connect(actionRemove_Noise, 	SIGNAL(triggered()), this, SLOT(deNoise()));
+	connect(action_Randomise_10, 	SIGNAL(triggered()), this, SLOT(randomisePatch()));
+	connect(action_Merge_With, 		SIGNAL(triggered()), this, SLOT(mergePatch()));
 	
-	connect(actionEWItool_Help, SIGNAL(triggered()), this, SLOT(externalHelp()));
-	connect(actionLicence, SIGNAL( triggered() ), this, SLOT( externalLicence() ) );
-	connect(action_About, SIGNAL(triggered()), this, SLOT(about()));
+	connect(actionEWItool_Help, 	SIGNAL(triggered()), this, SLOT(externalHelp()));
+	connect(actionLicence, 			SIGNAL( triggered() ), this, SLOT( externalLicence() ) );
+	connect(action_About, 			SIGNAL(triggered()), this, SLOT(about()));
 
-	connect( mainTabSet, SIGNAL( currentChanged( int ) ), this, SLOT( tabChanged( int ) ) );
+	connect( mainTabSet, 			SIGNAL( currentChanged( int ) ), this, SLOT( tabChanged( int ) ) );
 	
 	// by default we don't want context menus appearing
 	this->setContextMenuPolicy( Qt::NoContextMenu );
@@ -325,7 +326,7 @@ void MainWindow::about() {
 	QMessageBox::about(this,  
 					   "About EWItool",
 					   "<center><b>EWItool</b><br><br>"
-						"Version: 0.4<br><br>"
+						"Version: 0.5<br><br>"
 						"&copy; 2008 Steve Merrony<br><br>"
 						"Please see<br>"
 						"<a href='http://code.google.com/p/ewitool/'>http://code.google.com/p/ewitool/</a><br>"
@@ -1678,7 +1679,7 @@ void MainWindow::sendLibraryToEWI() {
 		progressDialog.setValue( p );
 		progressDialog.setLabelText(tr("Sending patch number %1 of %2...").arg(p).arg( EWI_NUM_PATCHES ));
 		mididata->patches[p] = patchSet[p];  // copy into mididata
-		EWI_patch_name[p]->setText( trimPatchName( mididata->patches[p].parameters.name ) );  // update EWI tab labels
+		EWIList->setLabel(p, trimPatchName( mididata->patches[p].parameters.name ) ); // update EWI tab labels 
 		qApp->processEvents();
 	}
 
@@ -1936,7 +1937,7 @@ void MainWindow::epxChosen() {
 void MainWindow::epxDetailsResults( QString details ) {
 	
 	if (details.contains( "," )) {
-	QStringList parms = details.split( "," );
+	QStringList parms = details.split( "," ); //////////// this needs fixing ***
 	name_label->setText( parms.at( 0 ) );
 	contributor_label->setText( parms.at( 1 ) );
 	originator_label->setText( parms.at( 2 ) );
@@ -1967,7 +1968,17 @@ void MainWindow::epxDelete() {
 					 id
 				   );
 	epx_ids.removeAt( id );
-	//results_listWidget->setCurrentRow( 0 );
+	
+	name_label->clear();
+	contributor_label->clear();
+	originator_label->clear();
+	type_label->clear();
+	desc_label->clear();
+	tags_label->clear();
+	added_label->clear();
+	epxCopy_pushButton->setEnabled( false );
+	epxDelete_pushButton->setEnabled( false );
+	
 	// force a re-query
 	epxQuery();
 	

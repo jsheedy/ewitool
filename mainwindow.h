@@ -152,10 +152,6 @@ Q_OBJECT
 		midi_data *mididata;
 		
 		EWIListWidget 	*EWIList;
-		QGridLayout		*EWI_grid;
-		QButtonGroup	*EWI_patch_group;
-		QPushButton		*EWI_patch_name[100];
-		QLCDNumber		*EWI_patch_num[100];
 		
 		patch_t			edit_patch;
 		patch_t			backup_patch;
