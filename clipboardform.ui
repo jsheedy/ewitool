@@ -1,0 +1,147 @@
+<ui version="4.0" >
+ <author>Steve Merrony</author>
+ <class>ClipboardForm</class>
+ <widget class="QWidget" name="ClipboardForm" >
+  <property name="geometry" >
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>276</width>
+    <height>642</height>
+   </rect>
+  </property>
+  <property name="windowTitle" >
+   <string>Form</string>
+  </property>
+  <widget class="QListWidget" name="clipboard_listWidget" >
+   <property name="geometry" >
+    <rect>
+     <x>10</x>
+     <y>40</y>
+     <width>261</width>
+     <height>521</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QLabel" name="label" >
+   <property name="geometry" >
+    <rect>
+     <x>10</x>
+     <y>10</y>
+     <width>261</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>Clipboard</string>
+   </property>
+   <property name="alignment" >
+    <set>Qt::AlignCenter</set>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="clearClipboard_pushButton" >
+   <property name="enabled" >
+    <bool>true</bool>
+   </property>
+   <property name="geometry" >
+    <rect>
+     <x>10</x>
+     <y>570</y>
+     <width>80</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>&amp;Clear</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="deleteClipboard_pushButton" >
+   <property name="enabled" >
+    <bool>true</bool>
+   </property>
+   <property name="geometry" >
+    <rect>
+     <x>100</x>
+     <y>570</y>
+     <width>80</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>&amp;Delete</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="renameClipboard_pushButton" >
+   <property name="enabled" >
+    <bool>true</bool>
+   </property>
+   <property name="geometry" >
+    <rect>
+     <x>190</x>
+     <y>570</y>
+     <width>80</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>&amp;Rename</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="viewHexClipboard_pushButton" >
+   <property name="enabled" >
+    <bool>true</bool>
+   </property>
+   <property name="geometry" >
+    <rect>
+     <x>10</x>
+     <y>610</y>
+     <width>80</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="text" >
+    <string>&amp;View Hex</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="exchangeClipboard_pushButton" >
+   <property name="enabled" >
+    <bool>true</bool>
+   </property>
+   <property name="geometry" >
+    <rect>
+     <x>100</x>
+     <y>610</y>
+     <width>80</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="toolTip" >
+    <string>Share/store Patch in the Patch Exchange</string>
+   </property>
+   <property name="text" >
+    <string>E&amp;xchange</string>
+   </property>
+  </widget>
+  <widget class="QPushButton" name="exportClipboard_pushButton" >
+   <property name="enabled" >
+    <bool>true</bool>
+   </property>
+   <property name="geometry" >
+    <rect>
+     <x>190</x>
+     <y>610</y>
+     <width>80</width>
+     <height>27</height>
+    </rect>
+   </property>
+   <property name="toolTip" >
+    <string>Export Patch to File</string>
+   </property>
+   <property name="text" >
+    <string>&amp;Export</string>
+   </property>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
