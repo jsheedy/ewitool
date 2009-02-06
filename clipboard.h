@@ -1,6 +1,6 @@
 /***************************************************************************
  *   Copyright (C) 2008 by Steve Merrony   *
- *   ewitool At merrony dot flyer dot co dot uk   *
+ *   steve@brahma   *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -17,51 +17,51 @@
  *   Free Software Foundation, Inc.,                                       *
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
-#include <iostream>
-using namespace std;
+#ifndef CLIPBOARD_H
+#define CLIPBOARD_H
 
-#include "midiportsdialog.h"
+#include <QListWidget>
+#include <QWidget>
 
-MIDIports_Dialog::MIDIports_Dialog (midi_data *m) : QDialog() {
-	
-	setupUi (this);
-    
-	mididata = m;
-	
-	m->scanPorts();
-	inPorts_listWidget->addItems( m->inPortList );
-	outPorts_listWidget->addItems( m->outPortList );
-	
-	// highlight the currently selected ports
-	for ( int i = 0; i < inPorts_listWidget->count(); i++ ) {
-		if (inPorts_listWidget->item(i)->text().startsWith( QString( "%1" ).arg( m->connectedInPort ) ) ) {
-			inPorts_listWidget->setCurrentRow( i );
-		}
-	}
-	for ( int i = 0; i < outPorts_listWidget->count(); i++ ) {
-		if (outPorts_listWidget->item(i)->text().startsWith( QString( "%1" ).arg( m->connectedOutPort ) ) ) {
-			outPorts_listWidget->setCurrentRow( i );
-		}
-	}
-	
-	connect( inPorts_listWidget, SIGNAL( currentRowChanged( int ) ), this, SLOT(inPortSelected( int)) );
-	connect( outPorts_listWidget, SIGNAL( currentRowChanged( int ) ), this, SLOT(outPortSelected( int)) );
-}
+#include "ui_clipboardform.h"
 
+#include "ewi4000spatch.h"
+#include "patchexchange.h"
 
-MIDIports_Dialog::~MIDIports_Dialog()
+/**
+	@author Steve Merrony <merrony AT googlemail dOt com>
+*/
+
+const QString 	CLIPBOARD_FILE  	= "/CLIPBOARD.CLP";
+const QString	EXPORT_DIR 			= "/export";
+const int		EXPORT_PATCH_NUM 	= 99;
+
+class Clipboard : public QWidget, private Ui::ClipboardForm
 {
-}
+Q_OBJECT
+public:
+    Clipboard( QString libraryLocation, patchExchange *main_epx, QWidget *parent = 0);
+    ~Clipboard();
+public slots:	
+	void clearAll( );
+	void load( );
+	void save( );
+	void appendItem( patch_t patch );
+	void deleteItem();
+	void renameItem();
+	void viewHex();
+	void exportToEPX();
+	void exportToFile();
+	void selectionChanged();
+	bool onClipboard( QString pname );
+	int  count();
+	QString getNameAt( int i );
+	patch_t getPatchAt( int i );
+	
+private:
+	QString			libraryLocation;
+	QList<patch_t>	clipboard_list;	
+	patchExchange	*epx;
+};
 
-
-void MIDIports_Dialog::inPortSelected( int r ) {
-	//mididata->connectInput( mididata->inPortPorts.at( r ) );
-	mididata->connectInput(  r  );
-}
-
-void MIDIports_Dialog::outPortSelected( int r ) {
-	//mididata->connectOutput( mididata->outPortPorts.at( r ) );
-	mididata->connectOutput(  r  );
-}
-
-
+#endif

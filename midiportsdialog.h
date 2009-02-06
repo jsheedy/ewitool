@@ -35,6 +35,7 @@ class MIDIports_Dialog : public QDialog, Ui::MIDIports_Dialog {
 			
 public:
     MIDIports_Dialog(midi_data *);
+	~MIDIports_Dialog();
 
 private slots:
 	void 	inPortSelected( int );

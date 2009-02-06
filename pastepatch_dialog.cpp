@@ -20,15 +20,13 @@
 
 #include "pastepatch_dialog.h"
 
-pastePatch_dialog::pastePatch_dialog( int toOverwrite, QList<patch_t> *clipboard ) : QDialog() {
+pastePatch_dialog::pastePatch_dialog( int toOverwrite, Clipboard *clipboard ) : QDialog() {
 	
 	setupUi( this );
 	
 	// copy clipboard names into list
-	for (int i = 0; i < clipboard->size(); i++ ) {
-		QString *sname = new QString( clipboard->at(i).parameters.name );
-		sname->truncate( EWI_PATCHNAME_LENGTH );
-		listWidget->addItem( sname->trimmed() );
+	for (int i = 0; i < clipboard->count(); i++ ) {
+		listWidget->addItem( clipboard->getNameAt(i) );
 	}
 	
 	lcdNumber->display( toOverwrite + 1 );

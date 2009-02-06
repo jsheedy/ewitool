@@ -19,15 +19,15 @@
  ***************************************************************************/
 #include "mergepatch_dialog.h"
 
+#include "ewi4000spatch.h"
+
 mergePatch_dialog::mergePatch_dialog( patch_t ewi_patches[EWI_NUM_PATCHES] ) : QDialog()
 {
 	setupUi( this );
 	
 	// copy path names into list
 	for (int i = 0; i < EWI_NUM_PATCHES; i++ ) {
-		QString *sname = new QString( ewi_patches[i].parameters.name );
-		sname->truncate( EWI_PATCHNAME_LENGTH );
-		patch_listWidget->addItem( sname->trimmed() );
+		patch_listWidget->addItem( ewi4000sPatch::toQString( ewi_patches[i].parameters.name ) );
 	}
 	
 	connect( buttonBox, SIGNAL( accepted() ), this, SLOT( accept() ) );

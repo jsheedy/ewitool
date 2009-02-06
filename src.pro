@@ -14,10 +14,12 @@ mainwindow.cpp \
  mergepatch_dialog.cpp \
  settings_dialog.cpp \
  patchexchange.cpp \
- epxsubmit_dialog.cpp
-unix {
-    SOURCES += midilistener.cpp
-}
+ epxsubmit_dialog.cpp \
+ clipboard.cpp \
+ RtMidi.cpp \
+ patchexchangegui.cpp \
+ ewi4000spatch.cpp \
+ midilistener.cpp
 HEADERS += mainwindow.h \
  midi_data.h \
  midiportsdialog.h \
@@ -27,15 +29,20 @@ HEADERS += mainwindow.h \
  mergepatch_dialog.h \
  settings_dialog.h \
  patchexchange.h \
- epxsubmit_dialog.h
-unix {
-    HEADERS += midilistener.h
-}
+ epxsubmit_dialog.h \
+ clipboard.h \
+ RtError.h \
+ RtMidi.h \
+ patchexchangegui.h \
+ ewi4000spatch.h \
+ midilistener.h
 unix {
     LIBS += -lasound
+    DEFINES += __LINUX_ALSASEQ__ 
 }
 win32 {
     LIBS += -lwinmm
+    DEFINES += __WINDOWS_MM__ 
 }
 
 FORMS += mainwindow.ui \
@@ -44,7 +51,9 @@ FORMS += mainwindow.ui \
  viewHex_dialog.ui \
  mergePatch_dialog.ui \
  settings_dialog.ui \
- epxSubmit_dialog.ui
+ epxSubmit_dialog.ui \
+ clipboardform.ui \
+ patchExchange_form.ui
 
 RESOURCES -= application.qrc
 

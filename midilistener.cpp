@@ -19,11 +19,23 @@
  ***************************************************************************/
 
 #include <iostream>
+#include <signal.h>
+
 using namespace std;
 
 
 #include "midilistener.h"
 #include "midi_data.h"
+		
+// Platform-dependent sleep routines.
+#if defined(__WINDOWS_MM__)
+#include <windows.h>
+#define SLEEP( milliseconds ) Sleep( (DWORD) milliseconds ) 
+#else // Unix variants
+#include <unistd.h>
+#define SLEEP( milliseconds ) usleep( (unsigned long) (milliseconds * 1000.0) )
+#endif		 
+				 
 				 
 MidiListener::MidiListener( QObject *parent )
 {
@@ -39,57 +51,51 @@ MidiListener::~MidiListener()
 }
 
 void MidiListener::run() {
-		
 
-	
-	midi_seq seq;
-	midi_port ip;
-	
-	if (tmidi_data->verboseMode) cout << "MidiListener thread running\n";
-	
-	//seq = &(tmidi_data->seq);
-	seq = tmidi_data->seq;
-	ip =  tmidi_data->inp_port;
-	
-	//createMidiInPort( seq, ip );
-	
-	snd_seq_event_t *ev;
-	
+	vector<unsigned char> message;
+	int nBytes;
+	double stamp;
+	RtMidiIn *midiIn =  tmidi_data->midiIn;
+
 	int this_patch_num;
-	if (tmidi_data->verboseMode) cout << "MIDIlistener: Seq name: " <<snd_seq_name( seq.seq_handle );
-	while (true) {
 
-		if (snd_seq_event_input( seq.seq_handle, &ev ) < 0) {
-			cout << "Error fetching MIDI event - data may have been lost\n";
+	if ( tmidi_data->verboseMode ) cout << "MidiListener thread running\n";
+
+	// Install an interrupt handler function
+	//(void) signal(SIGINT, finish);
+
+	while ( true ) {
+
+		stamp = midiIn->getMessage( &message );
+		nBytes = message.size();
+
+		if ( nBytes > 0 ) {
+
+			if ( message[0] == 0xf0 ) { // SysEx
+
+				if ( tmidi_data->verboseMode ) cout << "MidiListener: SysEx response received " << nBytes << " bytes\n";
+
+				patch_t this_patch;
+
+				for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) this_patch.whole_patch[i] = message[i];
+
+				if ( this_patch.parameters.header[3] == 0x7f ) {
+					this_patch_num = ( int ) this_patch.parameters.patch_num++;
+					for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) tmidi_data->patches[this_patch_num].whole_patch[i] = message[i];
+					tmidi_data->last_patch_loaded = this_patch_num;
+
+					if ( tmidi_data->verboseMode ) cout << "MidiListener: Received " << this_patch_num + 1 << " - " << this_patch.parameters.name << "\n";
+				}
+
+				tmidi_data->mymutex.lock();
+
+				tmidi_data->sysexDone.wakeAll();
+				tmidi_data->mymutex.unlock();
+			}		// Everything else is thrown away
 		}
-		
-		switch ( ev->type )
-		{
-		case SND_SEQ_EVENT_SYSEX:
-			if (tmidi_data->verboseMode) cout << "MidiListener: SysEx response received " << ev->data.ext.len << " bytes\n";
-			patch_t this_patch;
-			memcpy ( this_patch.whole_patch, ( char * ) ev->data.ext.ptr, EWI_PATCH_LENGTH );
-			if (this_patch.parameters.header[3] == 0x7f ) {
-				this_patch_num = ( int ) this_patch.parameters.patch_num++; 
-				memcpy ( tmidi_data->patches[this_patch_num].whole_patch, ( char * ) ev->data.ext.ptr, EWI_PATCH_LENGTH );
-				tmidi_data->last_patch_loaded = this_patch_num;
-				if (tmidi_data->verboseMode) cout << "MidiListener: Received " << this_patch_num+1 << " - " << this_patch.parameters.name << "\n";
-			}
-			tmidi_data->mymutex.lock();
-			tmidi_data->sysexDone.wakeAll();
-			tmidi_data->mymutex.unlock();
-			break;
-			
-		// Everything else is thrown away
-		default: 
-			//if (tmidi_data->verboseMode) cout << "MidiListener: Ignoring event type: " << (int) ev->type <<"\n";
-			;
-		} // end-switch
-		
-		snd_seq_free_event( ev );
-	}
-	
 
+		SLEEP( 10 );
+	}
 }
 
 

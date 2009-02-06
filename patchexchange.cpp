@@ -20,20 +20,25 @@
 #include <iostream>
 using namespace std;
 
+#include <QMessageBox>
+#include <QSettings>
 #include <QString>
 
 #include "patchexchange.h"
 
-patchExchange::patchExchange( QObject * parent) :QObject( parent )
+patchExchange::patchExchange( QWidget * parent) :QObject( parent )
 {
+	owner = parent;
 	http = new QHttp( this );
 	html_arr = new QByteArray();
 	html_buff = new QBuffer( html_arr );
 	
-	host_id = 0;	ct_id = 0;	vu_id = 0;	dd_id = 0;	ins_id = 0;	qry_id = 0, details_id = 0; delete_id = 0;
+	host_id = 0;	ct_id = 0;	vu_id = 0;	dd_id = 0;	ins_id = 0;	
+	qry_id = 0, details_id = 0; delete_id = 0; stats_id = 0;
 	
 	//connect( http, SIGNAL( done(bool) ), this, SLOT( httpDone( bool ) ) );
 	connect( http, SIGNAL( requestFinished( int, bool )), this, SLOT( finished( int, bool ) ) );
+	
 }
 
 
@@ -115,6 +120,12 @@ void patchExchange::getDetails( QString url,
 							html_buff );
 }
 
+void patchExchange::getStats( QString url ) {
+	  host_id = http->setHost( url );	
+	  stats_id = http->get( "/EPX/epx.php?action=stats",
+	 						html_buff );
+}
+
 void patchExchange::deletePatch( QString url,
 								QString userid, 
 								QString passwd, 
@@ -159,6 +170,10 @@ void patchExchange::finished( int id, bool error ) {
 		emit insertResponse( requestStatus() );
 	}
 	
+	if (id == delete_id ) {
+		emit deleteResponse( requestStatus() );
+	}
+	
 	if ( id == qry_id ) {
 		if (!error) 
 			//cout << "Query response: " << qPrintable( requestStatus() ) << endl;
@@ -173,6 +188,9 @@ void patchExchange::finished( int id, bool error ) {
 		//else
 		//	emit dropdownData( qPrintable( http->errorString() ) );
 	}
+	if ( id == stats_id ) {
+		emit statsResponse( requestStatus() );
+	}
 }
 
 QString patchExchange::requestStatus() {
@@ -185,4 +203,29 @@ QString patchExchange::requestStatus() {
 	status = html_arr->mid( sstart, sfinish - sstart );
 
 	return status;
+}
+
+void patchExchange::exchangeClipboardResponse( QString response ) {
+	
+	// cout << "EPX Export response: " << qPrintable( response ) << endl;
+	if (response.startsWith( "Resource id #" )) { 	// success
+		QMessageBox::information( owner, "EWItool - Patch Exchanged",
+								  tr("Patch Succesfully sent to EWI Patch Exchange - Thank You") );
+		QSettings settings( "EWItool", "EWItool" );
+		QString url = settings.value( "PatchExchange/Server" ).toString();
+		getStats( url );
+	}
+	else {
+		// duplicate?
+		if (response.contains( "duplicate key" )) {
+			QMessageBox::warning( owner, "EWItool - Exchange Error",
+								  tr( "EPX Export Error\n\nThat patch is already in the Exchange" ) );
+		}
+		else {	// some other error
+			QMessageBox::warning( owner, "EWItool - Exchange Error",
+								  tr( "EPX Export Error\n\n" ) + 
+										  response.mid( response.indexOf( "ERROR:" ) + 7,
+										  response.indexOf( " in <b>" ) - response.indexOf( "ERROR:" ) + 7) );
+		}
+	}
 }

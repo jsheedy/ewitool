@@ -26,7 +26,7 @@
 
 #include <QDialog>
 
-#include "midi_data.h"
+#include "ewi4000spatch.h"
 
 #include "ui_mergePatch_dialog.h"
 

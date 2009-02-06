@@ -31,16 +31,15 @@
 
 #include "ui_mainwindow.h"
 
+#include "clipboard.h"
 #include "ewilistwidget.h"
 #include "midi_data.h"
 #include "patchexchange.h"
+#include "patchexchangegui.h"
 
 const QString	HELP_URL			= "http://code.google.com/p/ewitool/wiki/Using_EWItool";
 const QString	GPL3_URL			= "http://www.gnu.org/licenses/gpl-3.0.txt";
-//const QString	EXPORT_DIR 			= "/export";
-const int		EXPORT_PATCH_NUM 	= 99;
-const QString 	CLIPBOARD_FILE  	= "/CLIPBOARD.CLP";
-const QString	LIBRARY_EXTENSION	= ".syx";
+
 const int		STATUS_MSG_TIMEOUT 	= 3000;
 const int		LIBRARY_TAB			= 0;
 const int		EPX_TAB				= 1;
@@ -56,22 +55,18 @@ Q_OBJECT
 	private slots:
 		// menu
 		void import() ;
-		void save();
 		void saveAs();
 		void print();
 		void settings();
 		void quit();
 		void MIDIconnections();
-		void panic();
+		void sendSysexFile();
 		void fetchAllPatches();
 		void externalHelp();
 		void externalLicence();
 		void about();
-		// EPX
-		void populateEPXtab( QStringList dropdown_data );
 		// GUI actions
-		void saveClipboard();
-		void saveCurrentPatchAs();
+		void copyCurrentPatchAs();
 		void saveCurrentPatch();
 		void revertPatch();
 		void patchSelected( int );
@@ -91,20 +86,10 @@ Q_OBJECT
 		
 		void setList_chosen(QListWidgetItem *);
 		void deletePatchSet();
+		void librarySelectionChanged( );
 		void sendLibraryToEWI();
 		void copyToClipboard();
-		void clearClipboard();
-		void deleteClipboard();
-		void renameClipboard();
-		void viewHexClipboard();
-		void exportClipboard();
-		void exportClipboardResponse( QString response );
-		void epxQuery();
-		void epxQueryResults( QString patch_list );
-		void epxChosen();
-		void epxDetailsResults( QString details );
-		void epxDelete();
-		void epxCopy();
+		void exportCurrentPatch();
 				
 		void changeSlider( int );
 		void changeDial( int );
@@ -117,7 +102,6 @@ Q_OBJECT
 	
 	private:
 		void setupPatchTab();
-		void setupEPXtab();
 		void setupLibraryTab();
 		void setupEWItab();
 		//void contextMenuEvent( QContextMenuEvent *);
@@ -129,35 +113,30 @@ Q_OBJECT
 				
 		QAction *editAct, *copyAct, *pasteAct, *renameAct;
 		QMenu *EWIcontextMenu;
-		
-		void loadClipboard();
+	
 		void loadSettings();
 		void saveSettings();
 		void savePatchSet( QString );
-		QString trimPatchName( char * );
 		int randBetween( int, int );
 		int randNear( int, int, int );
 		int mixInts( int, int, int );
 		
 		QString		libraryLocation;
 		QString		libraryName;
-		patchExchange *epx;
 		QList<int>	epx_ids;
 		int			epx_details_id;
 		QString		epx_hex_patch;
-		//QString		currentPatchSetName;
 		
-		midi_seq  seq;
-		midi_port midiOut;
 		midi_data *mididata;
 		
 		EWIListWidget 	*EWIList;
+		patchExchange	*epx;
+		patchExchangeGUI *epxGUI;
+		Clipboard		*clipboard;
 		
 		patch_t			edit_patch;
 		patch_t			backup_patch;
 		patch_t 		patchSet[EWI_NUM_PATCHES];
-		QList<patch_t> 	clipboard;
-		//int	    clipboardCounter;
 		
 };
 

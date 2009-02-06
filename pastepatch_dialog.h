@@ -26,6 +26,7 @@
 
 #include <QDialog>
 
+#include "clipboard.h"
 #include "midi_data.h"
 
 #include "ui_pastePatch_dialog.h"
@@ -34,7 +35,7 @@ class pastePatch_dialog : public QDialog, Ui::pastePatch_dialog {
 	Q_OBJECT
 			
 public:
-    pastePatch_dialog( int, QList<patch_t> * );
+    pastePatch_dialog( int, Clipboard * );
 
     ~pastePatch_dialog();
 	int chosenRow;

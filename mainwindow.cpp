@@ -25,6 +25,7 @@ using namespace std;
 
 #include <QByteArray>
 #include <QDataStream>
+#include <QDate>
 #include <QDesktopServices>
 #include <QFileDialog>
 #include <QInputDialog>
@@ -39,37 +40,39 @@ using namespace std;
 
 #include "mainwindow.h"
 				 
-#include "epxsubmit_dialog.h"
 #include "midiportsdialog.h"
 #include "mergepatch_dialog.h"
 #include "pastepatch_dialog.h"
 #include "settings_dialog.h"
-#include "viewhex_dialog.h"
 
 MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Qt::WFlags f )
 	: QMainWindow(parent, f)
 {
 	mididata = (midi_data *) shared_midi_data;
 	
+	setupUi( this );
+	
+	epx = new patchExchange( this );
+	
 	loadSettings();  // get (or set) the stored app settings
 	
-	setupUi( this );
 	// connect the menu items to their slots
 	connect(action_Import, 			SIGNAL(triggered()), this, SLOT(import()));
-	connect(action_Save, 			SIGNAL(triggered()), this, SLOT(save()));
 	connect(actionSave_As, 			SIGNAL(triggered()), this, SLOT(saveAs()));
 	connect(actionPrint, 			SIGNAL(triggered()), this, SLOT(print()));
 	connect(actionSe_ttings, 		SIGNAL(triggered()), this, SLOT(settings()));
 	connect(actionE_xit, 			SIGNAL(triggered()), this, SLOT(quit()));
 	
 	connect(action_Connections, 	SIGNAL(triggered()), this, SLOT(MIDIconnections()));
-	connect(action_Panic, 			SIGNAL(triggered()), this, SLOT(panic()));
+	connect(action_MIDI_Send_SysEx_File, SIGNAL(triggered()), this, SLOT( sendSysexFile() ));
+	
 	connect(actionFetch_All_Patches, SIGNAL(triggered()), this, SLOT(fetchAllPatches()));
 	
 	menu_Patch->setEnabled( false );
 	connect(action_Patch_Save, 		SIGNAL(triggered()), this, SLOT(saveCurrentPatch()));
-	connect(action_Patch_Save_As, 	SIGNAL(triggered()), this, SLOT(saveCurrentPatchAs()));
-	connect(action_Patch_Copy, 		SIGNAL(triggered()), this, SLOT(saveCurrentPatch()));
+	//connect(action_Patch_Copy, 		SIGNAL(triggered()), this, SLOT(saveCurrentPatch()));  ///////// wrong function!
+	connect(action_Patch_Copy_As, 	SIGNAL(triggered()), this, SLOT(copyCurrentPatchAs()));
+	connect(action_Patch_Export, 	SIGNAL(triggered()), this, SLOT(exportCurrentPatch()));
 	connect(action_Patch_Revert, 	SIGNAL(triggered()), this, SLOT(revertPatch()));
 	connect(action_Default_Patch, 	SIGNAL(triggered()), this, SLOT(defaultPatch()));
 	connect(action_Random_Patch, 	SIGNAL(triggered()), this, SLOT(randomPatch()));
@@ -85,13 +88,22 @@ MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Q
 	connect( mainTabSet, 			SIGNAL( currentChanged( int ) ), this, SLOT( tabChanged( int ) ) );
 	
 	// by default we don't want context menus appearing
-	this->setContextMenuPolicy( Qt::NoContextMenu );
+	//this->setContextMenuPolicy( Qt::NoContextMenu );
 	
 	setupEWItab();
 	patch_tab->setEnabled( false );
-	epx_tab->setEnabled( false );  	// EPX tab disabled unless we can connect to EPX
+	//epx_tab->setEnabled( false );  	// EPX tab disabled unless we can connect to EPX
 	setupPatchTab();
 	setupLibraryTab();
+	
+	QSettings settings( "EWItool", "EWItool" );
+	if (settings.contains( "PatchExchange/UserID" )) {
+			//epx_tab->setEnabled( true ); 
+		epxGUI = new patchExchangeGUI( clipboard, epx, epx_tab );
+	}
+	else {
+			//epx_tab->setEnabled( false );  // crashes on win32...
+	}
 }
 
 
@@ -115,21 +127,14 @@ void MainWindow::loadSettings() {
 		else {
 			QSettings settings( "EWItool", "EWItool" );
 			settings.setValue( "library/location", libraryLocation );
-			//QDir::QDir( libraryLocation ).mkdir( EXPORT_DIR );		// create an export subdirectory
+			QDir::QDir( libraryLocation ).mkdir( EXPORT_DIR );		// create an export subdirectory
 		}
 	} else {
 		libraryLocation = settings.value( "library/location" ).toString();
-		if (settings.contains( "MIDI/OutClient" ))
-				  mididata->connectOutput( settings.value("MIDI/OutClient").toInt(), settings.value("MIDI/OutPort").toInt() );
-		if (settings.contains( "MIDI/InClient" ))
-			mididata->connectInput( settings.value("MIDI/InClient").toInt(), settings.value("MIDI/InPort").toInt() );
-		
-		if (settings.contains( "PatchExchange/UserID" )) {
-			setupEPXtab();
-		}
-		else {
-			//epx_tab->setEnabled( false );  // crashes on win32...
-		}
+		if (settings.contains( "MIDI/OutPort" ))
+				  mididata->connectOutput( settings.value("MIDI/OutPort").toInt() );
+		if (settings.contains( "MIDI/InPort" ))
+			mididata->connectInput( settings.value("MIDI/InPort").toInt() );
 	}
 }
 
@@ -144,7 +149,7 @@ void MainWindow::settings() {
 // tabSet handlers...
 
 void MainWindow::tabChanged( int new_tab ) {
-	// conextualise the menus
+	// conextualise the menus etc.
 	switch ( new_tab ) {
 		case LIBRARY_TAB:
 			action_Import->setEnabled( true );
@@ -155,6 +160,7 @@ void MainWindow::tabChanged( int new_tab ) {
 			action_Import->setEnabled( false );
 			actionSave_As->setEnabled( false );
 			actionPrint->setEnabled( false );
+			//epx->getStats();
 			break;
 		case EWI_TAB:
 			action_Import->setEnabled( false );
@@ -163,7 +169,7 @@ void MainWindow::tabChanged( int new_tab ) {
 			break;
 		case PATCH_TAB:
 			action_Import->setEnabled( false );
-			actionSave_As->setEnabled( true );
+			actionSave_As->setEnabled( false );
 			actionPrint->setEnabled( true );
 			break;
 		default:
@@ -252,16 +258,14 @@ void MainWindow::import() {
 			else {
 				// we got some patches - but not a full set, so put them on the clipboard
 				for (int cp = 0; cp < p; cp++) {
-					clipboard_listWidget->addItem( trimPatchName( patchSet[cp].parameters.name ) );
-					clipboard.append( patchSet[cp] );
+					clipboard->appendItem( patchSet[cp] );
 				}
-				saveClipboard();
 				QApplication::restoreOverrideCursor();
 				statusBar()->showMessage(tr("Partial Soundbank imported and saved on Clipboard"), STATUS_MSG_TIMEOUT);
 				return;
 			}
 		}
-		setContents_listWidget->addItem( trimPatchName( patchSet[p].parameters.name ) );
+		setContents_listWidget->addItem( ewi4000sPatch::toQString( patchSet[p].parameters.name ) );
 	}
 	
 	// write new patchset to disk
@@ -285,10 +289,6 @@ void MainWindow::import() {
 	QApplication::restoreOverrideCursor();
 	
 	statusBar()->showMessage(tr("Complete Soundbank imported and saved"), STATUS_MSG_TIMEOUT);
-}
-
-void MainWindow::save() {
-	//if (mainTabSet->currentWidget() == library_tab ) saveClipboard();
 }
 
 void MainWindow::saveAs() {
@@ -326,7 +326,7 @@ void MainWindow::about() {
 	QMessageBox::about(this,  
 					   "About EWItool",
 					   "<center><b>EWItool</b><br><br>"
-						"Version: 0.5<br><br>"
+						"Version: 0.6<br><br>"
 						"&copy; 2008 Steve Merrony<br><br>"
 						"Please see<br>"
 						"<a href='http://code.google.com/p/ewitool/'>http://code.google.com/p/ewitool/</a><br>"
@@ -335,15 +335,22 @@ void MainWindow::about() {
 
 void MainWindow::MIDIconnections() {
 	
-	//MIDIports_Dialog mp = new MIDIports_Dialog( this );
 	MIDIports_Dialog d( mididata );
 	d.exec();
 	
 }
 
-void MainWindow::panic() {
-	
-	mididata->sendPanic();
+void MainWindow::sendSysexFile() {
+
+	QString fileName = QFileDialog::getOpenFileName( this,
+	                   tr( "SysEx File Name" ),
+	                   libraryLocation,
+	                   tr( "SysEx (*.syx *.SYX)" ) );
+
+	if ( fileName.isEmpty() ) 
+		return;
+	else
+		mididata->sendSysExFile( fileName );
 	
 }
 
@@ -500,7 +507,7 @@ void MainWindow::setupLibraryTab() {
 	setList_listWidget->clear();
 	setList_listWidget->addItems( lib_names );
 	
-	loadClipboard();
+	clipboard = new Clipboard( libraryLocation, epx, clipboard_widget );
 	
 	// connect set library GUI objects to their slots
 	connect(setList_listWidget, SIGNAL(itemClicked( QListWidgetItem *)), this, SLOT( setList_chosen(QListWidgetItem *) ));
@@ -508,48 +515,10 @@ void MainWindow::setupLibraryTab() {
 	connect(sendLibraryToEWI_pushButton, SIGNAL(clicked()), this, SLOT( sendLibraryToEWI() ));
 	
 	connect(copyToClipboard_pushButton, SIGNAL(clicked()), this, SLOT( copyToClipboard() ));
-	connect(clearClipboard_pushButton, SIGNAL(clicked()), this, SLOT( clearClipboard() ));
-	connect(deleteClipboard_pushButton, SIGNAL(clicked()), this, SLOT( deleteClipboard() ));
-	connect(renameClipboard_pushButton, SIGNAL(clicked()), this, SLOT( renameClipboard() ));
-	connect(viewHexClipboard_pushButton, SIGNAL(clicked()), this, SLOT( viewHexClipboard() ));
-	connect(exportClipboard_pushButton, SIGNAL(clicked()), this, SLOT( exportClipboard() ));
 	
+	connect( setList_listWidget, SIGNAL( itemSelectionChanged( ) ), this, SLOT( librarySelectionChanged( ) ) ) ;
 }
 
-/**
- * Here we _request_ the dropdown data for the EPX tab.
- */
-void MainWindow::setupEPXtab() {
-	
-	QSettings settings( "EWItool", "EWItool" );
-	QString url = settings.value( "PatchExchange/Server" ).toString();
-	epx = new patchExchange( this );
-	// data returns
-	connect( epx, SIGNAL( dropdownData( QStringList ) ), this, SLOT( populateEPXtab( QStringList ) ) );
-	connect( epx, SIGNAL( insertResponse( QString ) ), this, SLOT( exportClipboardResponse( QString ) ) );
-	connect( epx, SIGNAL( queryResponse( QString ) ), this, SLOT( epxQueryResults( QString ) ) );
-	connect( epx, SIGNAL( detailsResponse( QString ) ), this, SLOT( epxDetailsResults( QString ) ) );
-	epx->getDropdowns( url );
-}
-
-/**
- * The data for EPX have arrived - populate the tab
- */
-void MainWindow::populateEPXtab( QStringList dropdown_data ) {
-	
-	QStringList sl = dropdown_data.at( 0 ).split( "," );
-	type_comboBox->addItems( sl );
-	sl = dropdown_data.at( 1 ).split( "," );
-	contributor_comboBox->addItems( sl );
-	sl = dropdown_data.at( 2 ).split( "," );
-	origin_comboBox->addItems( sl );
-	// widgets
-	connect( epxQuery_pushButton, SIGNAL( clicked() ), this, SLOT( epxQuery() ) );
-	connect( epxDelete_pushButton, SIGNAL( clicked() ), this, SLOT( epxDelete() ) );
-	connect( epxCopy_pushButton, SIGNAL( clicked() ), this, SLOT( epxCopy() ) );
-	connect( results_listWidget, SIGNAL( itemSelectionChanged() ), this, SLOT( epxChosen() ) ) ;
-	epx_tab->setEnabled( true );
-}
 
 void MainWindow::setupEWItab() {
 	
@@ -561,49 +530,6 @@ void MainWindow::setupEWItab() {
 	
 }
 
-void MainWindow::saveClipboard() {
-	
-	/* 	this is not invoked directly by the user, but every function that changes the clipboard 
-		contents should call this once it has finished making changes to commit the clipoard to disk */
-	
-	QString fileName = libraryLocation + CLIPBOARD_FILE;
-	
-	QFile file(fileName);
-	if (!file.open(QFile::WriteOnly)) {
-		QMessageBox::warning(this, tr("EWItool"),
-							 tr("Cannot write file %1:\n%2.")
-									 .arg(fileName)
-									 .arg(file.errorString()));
-		return;
-	}
-
-	QDataStream out(&file);
-	for (int p = 0; p < clipboard.count(); p++ ) {
-		out.writeRawData( clipboard.at(p).whole_patch, EWI_PATCH_LENGTH );
-	}
-	statusBar()->showMessage(tr("Clipboard saved"), STATUS_MSG_TIMEOUT);
-}
-
-void MainWindow::loadClipboard() {
-	
-	patch_t tmp_patch;
-	QString fileName = libraryLocation + CLIPBOARD_FILE;
-	
-	QFile file(fileName);
-	if (!file.open(QFile::ReadOnly)) {
-		return;
-	}
-
-	clipboard_listWidget->clear();
-	clipboard.clear();
-	
-	QDataStream inp(&file);
-	while (!inp.atEnd()) {
-		inp.readRawData( (char *) &tmp_patch, EWI_PATCH_LENGTH );
-		clipboard_listWidget->addItem( trimPatchName( tmp_patch.parameters.name ) );
-		clipboard.append( tmp_patch );
-	}
-}
 
 void MainWindow::savePatchSetAs() {
 	
@@ -617,7 +543,12 @@ void MainWindow::savePatchSetAs() {
 	
 	savePatchSet( fileName );
 	
-	setupLibraryTab();
+	// re-read library
+	QDir dir = QDir( libraryLocation, "*" + LIBRARY_EXTENSION );
+	QStringList lib_names;
+	lib_names = dir.entryList();
+	setList_listWidget->clear();
+	setList_listWidget->addItems( lib_names );
 }
 
 void MainWindow::savePatchSet( QString fileName ) {
@@ -645,7 +576,7 @@ void MainWindow::savePatchSet( QString fileName ) {
 
 // Menu actions
 
-void MainWindow::saveCurrentPatchAs() {
+void MainWindow::copyCurrentPatchAs() {
 	
 	// Get new name from the user
 	bool ok;
@@ -658,24 +589,56 @@ void MainWindow::saveCurrentPatchAs() {
 	if (new_name.length() > EWI_PATCHNAME_LENGTH ) { 
 		QMessageBox::warning(this, tr("EWItool"),
 							 tr("Patch name too long!\nEnter up to %1 characters").arg(EWI_PATCHNAME_LENGTH));
-		saveCurrentPatchAs();
+		copyCurrentPatchAs();
 	}
 	
 	// check name not already on clipboard
-	if (clipboard_listWidget->findItems( new_name, Qt::MatchExactly ).count() > 0) {
+	if (clipboard->onClipboard( new_name ) ) {
 		QMessageBox::warning(this, tr("EWItool"),
 							 tr("That name already used on the Clipboard!\nPlease try again"));
-		saveCurrentPatchAs();
+		copyCurrentPatchAs();
 	}
 		
 	// Save patch in the Clipboard
-	clipboard_listWidget->addItem( new_name );
 	QByteArray ba = new_name.leftJustified( EWI_PATCHNAME_LENGTH, ' ' ).toLatin1();
 	memcpy( (void *) &edit_patch.parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
-	clipboard.append( edit_patch );
+	clipboard->appendItem( edit_patch );
 	
 	statusBar()->showMessage(tr("Patch saved to Clipboard"), STATUS_MSG_TIMEOUT);
 }
+
+/**
+ * Export the current patch to a .syx file
+ */
+void MainWindow::exportCurrentPatch() {
+	
+	patch_t e_patch;
+	
+	QString p_name = ewi4000sPatch::toQString( edit_patch.parameters.name );
+	
+	QString e_name = libraryLocation + EXPORT_DIR + "/" + p_name + LIBRARY_EXTENSION;
+	QFile file(e_name);
+	if (!file.open(QFile::WriteOnly)) {
+		QMessageBox::warning(this, tr("EWItool"),
+							 tr("Cannot write file %1:\n%2.")
+									 .arg(e_name)
+									 .arg(file.errorString()));
+		return;
+	}
+	
+	e_patch = edit_patch;
+	e_patch.parameters.mode = EWI_SAVE;
+	e_patch.parameters.patch_num = EXPORT_PATCH_NUM;
+	
+	QDataStream out(&file);
+	out.writeRawData( e_patch.whole_patch, EWI_PATCH_LENGTH );
+	
+	QMessageBox::information(this, tr("EWItool - Patch Export"),
+							 tr("Patch exported to ") + e_name );
+	
+}
+
+
 
 void MainWindow::saveCurrentPatch() {
 
@@ -730,7 +693,7 @@ return;
 	}
 	
 	for (int p = 0; p < EWI_NUM_PATCHES; p++ ) {
-		EWIList->setLabel( p, trimPatchName( mididata->patches[p].parameters.name ) );
+		EWIList->setLabel( p, ewi4000sPatch::toQString( mididata->patches[p].parameters.name ) );
 	} 
 	
 	libraryName.clear();  					// as we've just loaded patches direct from the EWI there's no current libary name
@@ -777,7 +740,7 @@ void MainWindow::printPatchList( bool current ) {
 
 	// patch set name
 	if ( current )
-		p.drawText( half_inch, half_inch, "Current EWI Contents" );
+		p.drawText( half_inch, half_inch, "Current EWI Contents - " + QDate::currentDate().toString() );
 	else
 		p.drawText( half_inch, half_inch, setList_listWidget->currentItem()->text() );
 
@@ -788,7 +751,7 @@ void MainWindow::printPatchList( bool current ) {
 			if ( current )
 				p.drawText( half_inch + ( col*col_spacing ), one_inch + ( row*line_height ), plab + ": " + EWIList->getLabel( row + 25*col ) );
 			else
-				p.drawText( half_inch + ( col*col_spacing ), one_inch + ( row*line_height ), plab + ": " + trimPatchName( patchSet[row + 25*col].parameters.name ) );
+				p.drawText( half_inch + ( col*col_spacing ), one_inch + ( row*line_height ), plab + ": " + ewi4000sPatch::toQString( patchSet[row + 25*col].parameters.name ) );
 		}
 	}
 	p.end();
@@ -854,7 +817,7 @@ void MainWindow::displayPatch() {
 	// tell the EWI what we're up to
 	mididata->sendPatch( edit_patch, EWI_EDIT ); 
 			
-	patchname_lineEdit->setText( trimPatchName( edit_patch.parameters.name)  );
+	patchname_lineEdit->setText( ewi4000sPatch::toQString( edit_patch.parameters.name)  );
 	
 	// ix 0 = +2
 	osc1_octave_comboBox->setCurrentIndex( edit_patch.parameters.osc1.octave - 64 + 2 );
@@ -1638,7 +1601,7 @@ void MainWindow::setList_chosen(QListWidgetItem *item) {
 	QApplication::setOverrideCursor(Qt::WaitCursor);
 	for (int p = 0; p < EWI_NUM_PATCHES; p++) {
 		inp.readRawData( patchSet[p].whole_patch, EWI_PATCH_LENGTH );
-		setContents_listWidget->addItem( trimPatchName( patchSet[p].parameters.name ) );
+		setContents_listWidget->addItem( ewi4000sPatch::toQString( patchSet[p].parameters.name ) );
 	}
 	QApplication::restoreOverrideCursor();
 	
@@ -1649,7 +1612,7 @@ void MainWindow::setList_chosen(QListWidgetItem *item) {
 
 void MainWindow::deletePatchSet() {
 	
-	if (QMessageBox::question (this, "EWItool",
+	if (QMessageBox::question (this, "EWItool - Delete Patch Set",
 		tr ("Do you realy want to delete this Patch Set from disk?" ),
 		QMessageBox::No | QMessageBox::Yes
 							  ) ==  QMessageBox::No) return;
@@ -1657,12 +1620,18 @@ void MainWindow::deletePatchSet() {
 	QString file_name = libraryLocation + "/" + libraryName;
 	QFile file( file_name );
 	file.remove();
-	setupLibraryTab();
+	setContents_listWidget->clear();
+	// re-read library
+	QDir dir = QDir( libraryLocation, "*" + LIBRARY_EXTENSION );
+	QStringList lib_names;
+	lib_names = dir.entryList();
+	setList_listWidget->clear();
+	setList_listWidget->addItems( lib_names );
 }
 
 void MainWindow::sendLibraryToEWI() {
 
-	if (QMessageBox::question( this, "EWItool",
+	if (QMessageBox::question( this, "EWItool - Send Patch Set to EWI",
 		tr( "This will overwrite all patches in the EWI with the chosen library.\n"
 				"Do you really want to do this?" ),
 		QMessageBox::No | QMessageBox::Yes
@@ -1679,59 +1648,61 @@ void MainWindow::sendLibraryToEWI() {
 		progressDialog.setValue( p );
 		progressDialog.setLabelText(tr("Sending patch number %1 of %2...").arg(p).arg( EWI_NUM_PATCHES ));
 		mididata->patches[p] = patchSet[p];  // copy into mididata
-		EWIList->setLabel(p, trimPatchName( mididata->patches[p].parameters.name ) ); // update EWI tab labels 
+		EWIList->setLabel(p, ewi4000sPatch::toQString( mididata->patches[p].parameters.name ) ); // update EWI tab labels 
 		qApp->processEvents();
 	}
 
 }
 
+void MainWindow::librarySelectionChanged( ) {
+		
+	if (setList_listWidget->selectedItems().empty()) { // no row selected
+		deleteSet_pushButton->setEnabled( false );
+		sendLibraryToEWI_pushButton->setEnabled( false );
+	}
+	else {
+		deleteSet_pushButton->setEnabled( true );
+		sendLibraryToEWI_pushButton->setEnabled( true );
+	}
+	
+}
 
 void MainWindow::copyToClipboard() {
 	
 	QModelIndexList indexes = setContents_listWidget->selectionModel()->selectedIndexes();
 	foreach(QModelIndex index, indexes)	{
-		// check item not already on the clipboard
-		bool already = false;
-		for (int i = 0; i < clipboard.size(); i++) {
-			if ( trimPatchName( (char *) clipboard.at(i).parameters.name ) == trimPatchName( patchSet[index.row()].parameters.name ) ) {
-				already = true;
-				break;
-			}
-		}
-		if (!already) {
-			clipboard_listWidget->addItem( trimPatchName( patchSet[index.row()].parameters.name ) );
-			clipboard.append( patchSet[index.row()] );
+		
+		if (!clipboard->onClipboard( ewi4000sPatch::toQString( patchSet[index.row()].parameters.name )) ) {
+			clipboard->appendItem( patchSet[index.row()] );
 		}
 	} 
 	setContents_listWidget->clearSelection();
 	
-	saveClipboard();
 }
 
 void MainWindow::copyEWIPatch( int p ) {
 	edit_patch = mididata->patches[p];
-	clipboard_listWidget->addItem( trimPatchName( edit_patch.parameters.name ) );
-	clipboard.append( edit_patch );
 	
-	saveClipboard();
+	clipboard->appendItem( edit_patch );
 }
 
 void MainWindow::pasteEWIPatch( int p ) {
 	edit_patch = mididata->patches[p];
 	
-	pastePatch_dialog *d = new pastePatch_dialog( (int) edit_patch.parameters.patch_num, &clipboard);
+	pastePatch_dialog *d = new pastePatch_dialog( (int) edit_patch.parameters.patch_num, clipboard);
 	if (d->exec()) {
+		patch_t tmp_patch = clipboard->getPatchAt(d->chosenRow);
 		// set the new patch number in the patch
-		clipboard[d->chosenRow].parameters.patch_num = edit_patch.parameters.patch_num;
+		tmp_patch.parameters.patch_num = edit_patch.parameters.patch_num;
 		// copy into the working patch set and editing patch
-		patchSet[edit_patch.parameters.patch_num] = clipboard[d->chosenRow];
-		edit_patch = clipboard[d->chosenRow];
+		patchSet[edit_patch.parameters.patch_num] = tmp_patch;
+		edit_patch = tmp_patch;
 		// and in the MIDI structure as we're not going to waste time re-reading it from the EWI
-		mididata->patches[edit_patch.parameters.patch_num] = clipboard[d->chosenRow];
+		mididata->patches[edit_patch.parameters.patch_num] = tmp_patch;
 		// save in the EWI
 		mididata->sendPatch( edit_patch, EWI_SAVE ); 
 		// update the displayed list
-		EWIList->setLabel( p, trimPatchName( patchSet[edit_patch.parameters.patch_num].parameters.name ) );
+		EWIList->setLabel( p, ewi4000sPatch::toQString( patchSet[edit_patch.parameters.patch_num].parameters.name ) );
 	}
 	delete d;
 }
@@ -1739,7 +1710,7 @@ void MainWindow::pasteEWIPatch( int p ) {
 void MainWindow::renameEWIPatch( int p ) {
 	edit_patch = mididata->patches[p];
 	bool ok;
-	QString text = trimPatchName( edit_patch.parameters.name );
+	QString text = ewi4000sPatch::toQString( edit_patch.parameters.name );
 	QString new_name = QInputDialog::getText(this, "EWItool", "New Patch Name", QLineEdit::Normal, text, &ok);
 	if (!ok || new_name.isEmpty()) return;
 
@@ -1760,252 +1731,7 @@ void MainWindow::renameEWIPatch( int p ) {
 	mididata->sendPatch( edit_patch, EWI_SAVE ); 
 }
 
-void MainWindow::clearClipboard() {
-	
-	clipboard_listWidget->clear();
-	clipboard.clear();
-	
-	QString fileName = libraryLocation + "/CLIPBOARD.CLP";
-	QFile file(fileName);
-	file.remove();
-}
-
-void MainWindow::deleteClipboard() { 
-	
-	int row = clipboard_listWidget->currentRow();
-	if (row != -1) {
-		delete clipboard_listWidget->takeItem( row );
-		clipboard.removeAt( row );
-	}
-	saveClipboard();
-}
-
-void MainWindow::renameClipboard() {
-
-	if (clipboard.count() > 0 && clipboard_listWidget->currentRow() > -1) {
-
-		// Get new name from the user
-		bool ok;
-
-		QListWidgetItem *curitem = clipboard_listWidget->currentItem();
-		int r = clipboard_listWidget->row (curitem);
-		QString text = curitem->text();
-		QString new_name = QInputDialog::getText (this, "EWItool", "New Patch Name", QLineEdit::Normal, text, &ok);
-
-		if (!ok || new_name.isEmpty()) return;
-
-		new_name = new_name.simplified();
-
-		if (new_name.length() > EWI_PATCHNAME_LENGTH) {
-			QMessageBox::warning (this, tr ("EWItool"),
-			                      tr ("Patch name too long!\nEnter up to %1 characters").arg (EWI_PATCHNAME_LENGTH));
-			renameClipboard();
-		}
-
-		// check name not already on clipboard
-		if (clipboard_listWidget->findItems (new_name, Qt::MatchExactly).count() > 0) {
-			QMessageBox::warning (this, tr ("EWItool"),
-			                      tr ("That name already used on the Clipboard!\nPlease try again"));
-			renameClipboard();
-		}
-
-		// Save patch in the Clipboard
-		clipboard_listWidget->takeItem (r);
-		delete curitem;
-		clipboard_listWidget->insertItem (r, new_name);
-		clipboard_listWidget->setCurrentRow (r);
-		QByteArray ba = new_name.leftJustified (EWI_PATCHNAME_LENGTH, ' ').toLatin1();
-		memcpy ( (void *) &clipboard[r].parameters.name, (void *) ba.data(), EWI_PATCHNAME_LENGTH);
-		
-		saveClipboard();
-	}
-}
-
-void MainWindow::viewHexClipboard() {
-	
-	if (clipboard.count() > 0 && clipboard_listWidget->currentRow() > -1) {
-		const char *raw_patch = &clipboard.at( clipboard_listWidget->currentRow() ).whole_patch[0];
-		QString hex_patch;
-	
-		hex_patch = mididata->hexify( (char *) raw_patch, true );
-		viewHex_dialog *h = new viewHex_dialog( hex_patch );
-		h->exec();
-	}
-}
-
-// EPX actions
-
-/**
- * Export a patch from the Clipboard to the Patch Exchange
- */
-void MainWindow::exportClipboard() {
-	if (clipboard.count() > 0 && clipboard_listWidget->currentRow() > -1) {
-		
-		patch_t e_patch;
-	
-		e_patch = clipboard.at( clipboard_listWidget->currentRow() );
-		// get extra info for EPX from the user
-		epxSubmit_dialog *d = new epxSubmit_dialog( trimPatchName( e_patch.parameters.name ) );
-		if (d->exec()) {
-			// submit the patch
-			e_patch.parameters.mode = EWI_EDIT;
-			e_patch.parameters.patch_num = 0x00;
-			QSettings *settings = new QSettings( "EWItool", "EWItool" );
-			epx->insertPatch( 
-				settings->value( "PatchExchange/Server" ).toString(),
-				settings->value( "PatchExchange/UserID" ).toString(),
-				settings->value( "PatchExchange/Password" ).toString(),
-				trimPatchName( e_patch.parameters.name ),
-				d->p_origin,
-				d->p_type, 
-				d->p_desc,
-				d->p_private,
-				d->p_tags,
-				mididata->hexify( e_patch.whole_patch, false )
-			);
-			
-		}
-		delete d;
-	}
-}
-
-void MainWindow::exportClipboardResponse( QString response ) {
-	
-	// cout << "Export response: " << qPrintable( response ) << endl;
-	if (response.startsWith( "Resource id #" )) { 	// success
-		statusBar()->showMessage(tr("Patch Succesfully sent to EWI Patch Exchange - Thank You"), STATUS_MSG_TIMEOUT);
-	}
-	else {
-		// duplicate?
-		if (response.contains( "duplicate key" )) {
-			QMessageBox::warning( this, "EWItool",
-								  tr( "Export Error\n\nThat patch is already in the Exchange" ) );
-		}
-		else {	// some other error
-			QMessageBox::warning( this, "EWItool",
-								  tr( "Export Error\n\n" ) + 
-										  response.mid( response.indexOf( "ERROR:" ) + 7,
-										  response.indexOf( " in <b>" ) - response.indexOf( "ERROR:" ) + 7) );
-		}
-	}
-}
-
-void MainWindow::epxQuery() {
-	
-	QSettings *settings = new QSettings( "EWItool", "EWItool" );
-	epx->query( settings->value( "PatchExchange/Server" ).toString(),
-				settings->value( "PatchExchange/UserID" ).toString(),
-				settings->value( "PatchExchange/Password" ).toString(),
-				type_comboBox->currentText(),
-				since_comboBox->currentText(),
-				contributor_comboBox->currentText(),
-				origin_comboBox->currentText(),
-				tags_lineEdit->text() );
-	
-	epxCopy_pushButton->setEnabled( false );
-	epxDelete_pushButton->setEnabled( false );
-}
-
-void MainWindow::epxQueryResults( QString patch_list ) {
-	
-	int id;
-	
-	results_listWidget->clear();
-	epx_ids.clear();
-	
-	QStringList pl = patch_list.split( "\n" );
-	for (int i = 0; i < pl.size(); i++ ) {
-		results_listWidget->addItem( pl.at(i).left( pl.at(i).lastIndexOf( "," ) ) );
-		id = pl.at(i).mid( pl.at(i).lastIndexOf( "," ) + 1 ).toInt();
-		epx_ids.append( id );
-	}
-}
-
-void MainWindow::epxChosen() {
-	
-	int id;
-	
-	QSettings *settings = new QSettings( "EWItool", "EWItool" );
-	id = epx_ids.at( results_listWidget->currentRow() );
-	epx->getDetails( settings->value( "PatchExchange/Server" ).toString(),
-					 settings->value( "PatchExchange/UserID" ).toString(),
-					 settings->value( "PatchExchange/Password" ).toString(),
-					 id
-				   );
-}
-
-void MainWindow::epxDetailsResults( QString details ) {
-	
-	if (details.contains( "," )) {
-	QStringList parms = details.split( "," ); //////////// this needs fixing ***
-	name_label->setText( parms.at( 0 ) );
-	contributor_label->setText( parms.at( 1 ) );
-	originator_label->setText( parms.at( 2 ) );
-	epx_hex_patch = parms.at( 3 );
-	type_label->setText( parms.at( 4 ) );
-	desc_label->setText( parms.at( 5 ) );
-	added_label->setText( parms.at( 6 ) );
-	if (parms.at(7) == "f")
-		private_label->setText( "public" );
-	else
-		private_label->setText( "private" );
-	tags_label->setText( parms.at( 8 ) );
-	
-	epxCopy_pushButton->setEnabled( true );
-	epxDelete_pushButton->setEnabled( true );
-	}
-}
-
-void MainWindow::epxDelete() {
-	
-	if ( results_listWidget->currentRow() >= 0 ) {
-	
-	QSettings *settings = new QSettings( "EWItool", "EWItool" );
-	int id = epx_ids.at( results_listWidget->currentRow() );
-	epx->deletePatch( settings->value( "PatchExchange/Server" ).toString(),
-					 settings->value( "PatchExchange/UserID" ).toString(),
-					 settings->value( "PatchExchange/Password" ).toString(),
-					 id
-				   );
-	epx_ids.removeAt( id );
-	
-	name_label->clear();
-	contributor_label->clear();
-	originator_label->clear();
-	type_label->clear();
-	desc_label->clear();
-	tags_label->clear();
-	added_label->clear();
-	epxCopy_pushButton->setEnabled( false );
-	epxDelete_pushButton->setEnabled( false );
-	
-	// force a re-query
-	epxQuery();
-	
-	}
-}
-
-void MainWindow::epxCopy() {
-	
-	patch_t new_patch;
-	
-	new_patch = mididata->dehexify( epx_hex_patch, false );
-	
-	clipboard_listWidget->addItem( trimPatchName( new_patch.parameters.name ) );
-	clipboard.append( new_patch );
-	saveClipboard();
-}
-
-
-
 // utility functions...
-
-QString MainWindow::trimPatchName( char *rawName ) {
-	// utility function to get a nicely formatted patch name
-	QString sname = rawName;
-	sname.truncate( EWI_PATCHNAME_LENGTH );
-	return sname.trimmed();
-}
 
 int MainWindow::randBetween( int min, int max ) {
 	

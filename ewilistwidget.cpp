@@ -29,7 +29,7 @@ using namespace std;
 EWIListWidget::EWIListWidget( QWidget *parent )
 	: QWidget( parent )
 {
-	/* The body of EWI_tab will be a grid of 10cols x 20rows containing patch
+	/* The body of EWI_tab will be a grid of 10(col/2)s x 20rows containing patch
 	numbers and names */ 
 	
 	QAction *editAct[100],
@@ -43,45 +43,49 @@ EWIListWidget::EWIListWidget( QWidget *parent )
 	rename_signal_mapper = new QSignalMapper( this );
 			
 	QGridLayout *EWI_grid = new QGridLayout();
+
+	QFont font( "Helvetica", 8 );
 	
-	QFont font( "Helvetica", 9 );
-	
-	for (int col = 0; col < 5; col++) {
+	for (int col = 0; col < 10; col = col + 2 ) {
 		for (int row = 0; row < 20; row++) {
 			// first the LCD-style patch number (displayed as real number + 1)
 			QLCDNumber *EWI_patch_num = new QLCDNumber( 3 );
 			EWI_patch_num->setSegmentStyle(QLCDNumber::Filled);
-			EWI_patch_num->display( col*20 + row + 1 );
-			EWI_grid->addWidget( EWI_patch_num, row, col*2 );
+			EWI_patch_num->display( (col/2)*20 + row + 1 );
+			EWI_grid->addWidget( EWI_patch_num, row, (col/2)*2 );
+			EWI_patch_num->setSizePolicy( QSizePolicy::Fixed, QSizePolicy::Fixed );
+			
 			// now the name button
-			QPushButton *name_button = new QPushButton( QString( "          <Empty " + QString().setNum( row + 20*col + 1 ) + ">          ") );
+			QPushButton *name_button = new QPushButton( QString( "          <Empty " + QString().setNum( row + 20*(col/2) + 1 ) + ">          ") );
+			name_button->resize( 60, 20 );
 			name_button->setFont( font );
 			patch_button_list.append( name_button );
 			name_button->setCheckable( false );		// makes it a 'toggle' button
+			//name_button->setContextMenuPolicy( Qt::ActionsContextMenu );
 			
 			// the context menu
-			editAct[row + 20*col] = new QAction( tr( "&Edit" ), this );
-			copyAct[row + 20*col] = new QAction( tr( "&Copy" ), this );
-			pasteAct[row + 20*col] = new QAction( tr( "&Paste" ), this );
-			renameAct[row + 20*col] = new QAction( tr( "&Rename" ), this );
+			editAct[row + 20*(col/2)] = new QAction( tr( "&Edit" ), this );
+			copyAct[row + 20*(col/2)] = new QAction( tr( "&Copy" ), this );
+			pasteAct[row + 20*(col/2)] = new QAction( tr( "&Paste" ), this );
+			renameAct[row + 20*(col/2)] = new QAction( tr( "&Rename" ), this );
 			
-			name_button->addAction( editAct[row + 20*col] );
-			name_button->addAction( copyAct[row + 20*col] );
-			name_button->addAction( pasteAct[row + 20*col] );
-			name_button->addAction( renameAct[row + 20*col] );
+			name_button->addAction( editAct[row + 20*(col/2)] );
+			name_button->addAction( copyAct[row + 20*(col/2)] );
+			name_button->addAction( pasteAct[row + 20*(col/2)] );
+			name_button->addAction( renameAct[row + 20*(col/2)] );
 			
-			edit_signal_mapper->setMapping( editAct[row + 20*col], row + 20*col );
-			connect( editAct[row + 20*col], SIGNAL( triggered() ), edit_signal_mapper, SLOT( map() ) );
-			copy_signal_mapper->setMapping( copyAct[row + 20*col], row + 20*col );
-			connect( copyAct[row + 20*col], SIGNAL( triggered() ), copy_signal_mapper, SLOT( map() ) );
-			paste_signal_mapper->setMapping( pasteAct[row + 20*col], row + 20*col );
-			connect( pasteAct[row + 20*col], SIGNAL( triggered() ), paste_signal_mapper, SLOT( map() ) );
-			rename_signal_mapper->setMapping( renameAct[row + 20*col], row + 20*col );
-			connect( renameAct[row + 20*col], SIGNAL( triggered() ), rename_signal_mapper, SLOT( map() ) );
+			edit_signal_mapper->setMapping( editAct[row + 20*(col/2)], row + 20*(col/2) );
+			connect( editAct[row + 20*(col/2)], SIGNAL( triggered() ), edit_signal_mapper, SLOT( map() ) );
+			copy_signal_mapper->setMapping( copyAct[row + 20*(col/2)], row + 20*(col/2) );
+			connect( copyAct[row + 20*(col/2)], SIGNAL( triggered() ), copy_signal_mapper, SLOT( map() ) );
+			paste_signal_mapper->setMapping( pasteAct[row + 20*(col/2)], row + 20*(col/2) );
+			connect( pasteAct[row + 20*(col/2)], SIGNAL( triggered() ), paste_signal_mapper, SLOT( map() ) );
+			rename_signal_mapper->setMapping( renameAct[row + 20*(col/2)], row + 20*(col/2) );
+			connect( renameAct[row + 20*(col/2)], SIGNAL( triggered() ), rename_signal_mapper, SLOT( map() ) );
 			
-			EWI_grid->addWidget( name_button, row, (col*2)+1 );
+			EWI_grid->addWidget( name_button, row, ((col/2)*2)+1 );
 			// disable the context menu (until button is populated with a meaningful value via setLabel() )
-			name_button->setContextMenuPolicy( Qt::NoContextMenu );
+			//name_button->setContextMenuPolicy( Qt::NoContextMenu );
 			//name_button->setAcceptDrops( true );
 		}
 	}

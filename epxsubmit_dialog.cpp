@@ -37,6 +37,7 @@ epxSubmit_dialog::epxSubmit_dialog( QString pname ) : QDialog()
 
 epxSubmit_dialog::~epxSubmit_dialog()
 {
+	delete epx;
 }
 
 /**

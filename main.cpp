@@ -24,9 +24,13 @@ using namespace std;
 
 #include "mainwindow.h"
 
-#ifndef Q_WS_WIN
-#include "midilistener.h"
+#ifdef Q_WS_WIN
+#include <windows.h>
 #endif
+				 
+//#ifndef Q_WS_WIN
+#include "midilistener.h"
+//#endif
 				 
 #include "midi_data.h"
 				 
@@ -68,10 +72,10 @@ For more information please visit http://code.google.com/p/ewitool/ \n";
 	mw.show();
 	  
 	// On Linux received MIDI data is handled in a separate thread
-#ifdef Q_WS_X11
+//#ifdef Q_WS_X11
 	MidiListener *mlThread = new MidiListener( (QObject *) main_midi_data );
 	mlThread->start();
-#endif
+//#endif
 	
 	return app.exec();
 }
