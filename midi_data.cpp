@@ -66,7 +66,7 @@ void midi_data::createOurMIDIports() {
 	}
 	
 	// Do(n't) ignore sysex, timing, or active sensing messages.
-	midiIn->ignoreTypes( false, true, true );
+	midiIn->ignoreTypes( false, true, true ); // FIXME - should just be line 330?
 	
 	
 	try {
@@ -93,20 +93,24 @@ void midi_data::sendPanic() {
  * @param p 
  * @return 
  */
-bool midi_data::requestPatch (char p) {
+bool midi_data::requestPatch ( unsigned char p) {
 
 	std::vector<unsigned char> message;
-	
-	message.push_back( 0xf0 );
-	message.push_back( 0x47 );
-	message.push_back( 0x64 );
-	message.push_back( 0x00 );
-	message.push_back( 0x40 );
-	message.push_back( p );		// 6th byte is patch #
-	message.push_back( 0xf7 );
-	
+
+    if (p >= EWI_NUM_PATCHES) {
+      cerr << "Illegal request for patch - aborting\n";
+      exit(1);
+    }
+    
 	//char sysex_fetch_patch[] = { 0xf0, 0x47, 0x64, 0x00, 0x40, 0x00, 0xf7 }; // 6th byte is patch #
-	
+	message.push_back( MIDI_SYSEX_HEADER );
+    message.push_back( MIDI_SYSEX_AKAI_ID );
+    message.push_back( MIDI_SYSEX_AKAI_EWI4K );
+	message.push_back( MIDI_SYSEX_CHANNEL );
+    message.push_back( MIDI_PRESET_DUMP_REQ );
+	message.push_back( p );		// 6th byte is patch #
+	message.push_back( MIDI_SYSEX_TRAILER );
+    
 	try {
 		midiOut->sendMessage( &message );
 	}
@@ -114,8 +118,8 @@ bool midi_data::requestPatch (char p) {
 		error.printMessage();
 	}
 	
-	mymutex.lock();  // wait for a SysEx to be returned
-	if (!sysexDone.wait( &mymutex, 3000 )) {  // up to 3 secs
+	mymutex.lock();  // wait for a SysEx to be returned (MIDIListener looks after that)
+	if (!sysexDone.wait( &mymutex, MIDI_TIMEOUT_MS )) {
 		// we timed out
 		cout << "Timeout waiting for response from EWI\n";	
 		mymutex.unlock();
@@ -129,12 +133,82 @@ bool midi_data::requestPatch (char p) {
 	return true;
 }
 
+/**
+ * Requests the QuickPCs from the EWI and waits for them to be returned
+ * @param 
+ * @return
+ */
+bool midi_data::requestQuickPCs () {
+
+  std::vector<unsigned char> message;
+    
+  //char sysex_fetch_patch[] = { 0xf0, 0x47, 0x64, 0x00, 0x40, 0x00, 0xf7 }; // 6th byte is patch #
+  message.push_back( MIDI_SYSEX_HEADER );
+  message.push_back( MIDI_SYSEX_AKAI_ID );
+  message.push_back( MIDI_SYSEX_AKAI_EWI4K );
+  message.push_back( MIDI_SYSEX_ALLCHANNELS );
+  message.push_back( MIDI_QUICKPC_DUMP_REQ );
+  message.push_back( 0x00 );     // 6th byte is patch #
+  message.push_back( MIDI_SYSEX_TRAILER );
+    
+  try {
+    midiOut->sendMessage( &message );
+  }
+  catch ( RtError &error ) {
+    error.printMessage();
+  }
+    
+  mymutex.lock();  // wait for a SysEx to be returned
+  if (!sysexDone.wait( &mymutex, MIDI_TIMEOUT_MS )) {
+        // we timed out
+    cout << "Timeout waiting for response from EWI\n";
+    mymutex.unlock();
+    return false;
+  }
+  mymutex.unlock();
+
+  return true;
+}
+
+/**
+ * Sends the QuickPCs to the EWI
+ * @param
+ * @return
+ */
+bool midi_data::sendQuickPCs () {
+
+  std::vector<unsigned char> message;
+    
+  //char sysex_fetch_patch[] = { 0xf0, 0x47, 0x64, 0x00, 0x40, 0x00, 0xf7 }; // 6th byte is patch #
+  message.push_back( MIDI_SYSEX_HEADER );
+  message.push_back( MIDI_SYSEX_AKAI_ID );
+  message.push_back( MIDI_SYSEX_AKAI_EWI4K );
+  message.push_back( MIDI_SYSEX_ALLCHANNELS );
+  message.push_back( MIDI_QUICKPC_DUMP );
+  message.push_back( 0x00 );     // 6th byte is patch #
+  for (int i = 0; i < EWI_NUM_QUICKPCS; i++) {
+    message.push_back(quickPCs[i]);
+  }   
+  message.push_back( MIDI_SYSEX_TRAILER );
+    
+  try {
+    midiOut->sendMessage( &message );
+  }
+  catch ( RtError &error ) {
+    error.printMessage();
+  }
+
+  SLEEP( 250 );
+  
+  return true;
+}
+
 void midi_data::sendLiveControl (int lsb, int msb, int cvalue) {
-	sendCC (98, lsb);
-	sendCC (99, msb);
-	sendCC (6, cvalue);
-	sendCC (98, 127);
-	sendCC (99, 127);
+  sendCC (MIDI_CC_NRPN_LSB, lsb);
+  sendCC (MIDI_CC_NRPN_MSB, msb);
+  sendCC (MIDI_CC_DATA_ENTRY, cvalue);
+  sendCC (MIDI_CC_NRPN_LSB, 127);
+  sendCC (MIDI_CC_NRPN_MSB, 127);
 }
 
 void midi_data::sendCC (int cc, int val, int ch) {
@@ -155,8 +229,7 @@ void midi_data::sendCC (int cc, int val, int ch) {
 
 
 /**
- * Currently only use by sendPatch()
- * @param sysex 
+ * @param sysex
  * @param len 
  */
 void midi_data::sendSysEx (char *sysex, int len) {
@@ -181,9 +254,8 @@ void midi_data::sendSysEx (char *sysex, int len) {
 
 void midi_data::sendSysExFile( QString fileName ) {
 	
-	//  N.B. RtMidi assumes only 1 sysex per message.  We should check and break up files
-	//       containing multiple sysexes here...
-	
+	//  N.B. It seems RtMidi assumes only 1 sysex per message.  We should check and break up files
+	//       containing multiple sysexes here... FIXME - maybe fixed in RtMidi 1.0.9?
 	int nbytes;
 	char sysex[MAX_SYSEX_LENGTH];
 	QFile sysex_file( fileName );
@@ -196,7 +268,7 @@ void midi_data::sendSysExFile( QString fileName ) {
 	
 }
 
-void midi_data::sendPatch (patch_t p, char mode) {
+void midi_data::sendPatch (patch_t p, unsigned char mode) {
 	
 	p.parameters.mode = mode;
 
@@ -280,7 +352,10 @@ void midi_data::connectInput( int i_port ) {
 		error.printMessage();
 			//goto cleanup;
 	}
-	
+
+    // don't ignore SysExes, do ignore timing and active sense messages   
+    midiIn->ignoreTypes( false, true, true );
+    
 	connectedInPort = i_port;
 	if (verboseMode) cout << "Connected to MIDI input: " << i_port << endl;
 	QSettings settings( "EWItool", "EWItool" );
