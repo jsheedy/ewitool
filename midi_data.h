@@ -27,9 +27,34 @@
 #include <QWaitCondition>
 
 #include "ewi4000spatch.h"
+#include "ewi4000sQuickPC.h"
+
+// SysEx commands from Akai
+#define MIDI_PRESET_DUMP      0x00
+#define MIDI_PRESET_DUMP_REQ  0x40
+#define MIDI_QUICKPC_DUMP     0x01
+#define MIDI_QUICKPC_DUMP_REQ 0x41
+#define MIDI_EDIT_LOAD        0x10
+#define MIDI_EDIT_STORE       0x11
+#define MIDI_EDIT_DUMP        0x20
+#define MIDI_EDIT_DUMP_REQ    0x60
+
+#define MIDI_SYSEX_HEADER     0xf0
+#define MIDI_SYSEX_TRAILER    0xf7
+#define MIDI_SYSEX_AKAI_ID    0x47
+#define MIDI_SYSEX_AKAI_EWI4K 0x64
+#define MIDI_SYSEX_CHANNEL    0x00
+#define MIDI_SYSEX_ALLCHANNELS 0x7f
+
+#define MIDI_CC_DATA_ENTRY    0x06
+#define MIDI_CC_NRPN_LSB      0x62
+#define MIDI_CC_NRPN_MSB      0x63
 
 const QString	LIBRARY_EXTENSION	= ".syx";
 const int	MAX_SYSEX_LENGTH		= 262144;
+const int   EWI_SYSEX_PRESET_DUMP_LEN = 206;
+const int   EWI_SYSEX_QUICKPC_DUMP_LEN = 91;
+const int   MIDI_TIMEOUT_MS         = 3000;
 const int	EWI_SOUNDBANK_MAX_HEADER_LENGTH = 0x450;	// looks safe from observation
 // below is the sequence which appears to start the real body of SQS files, there
 // seem to be various false BODYs before the main one we care about
@@ -48,12 +73,13 @@ public:
 	
 	void createOurMIDIports();
 	void sendPanic();
-	bool requestPatch( char );
+	bool requestPatch( unsigned char );
+    bool requestQuickPCs();
+    bool sendQuickPCs();
 	void sendLiveControl(int, int, int );
 	void sendCC( int, int, int = 0 );
-	void sendSysEx(char *, int );
 	void sendSysExFile( QString fileName );
-	void sendPatch( patch_t, char = EWI_SAVE );
+	void sendPatch( patch_t, unsigned char = EWI_SAVE );
 	
 	void scanPorts();
 	void connectOutput( int );
@@ -68,6 +94,7 @@ public:
 	
 	int			last_patch_loaded;
 	patch_t 	patches[EWI_NUM_PATCHES];
+    all_quickpcs_t quickPCs;   
 	
 	QStringList inPortList, outPortList;
 	QList<int>  inPortPorts, outPortPorts;
@@ -75,6 +102,9 @@ public:
 	int         connectedOutPort;
 	RtMidiIn	*midiIn;
 	RtMidiOut	*midiOut;
+    
+  private:
+    void sendSysEx(char *, int );
 };
 
 #endif
