@@ -23,6 +23,7 @@ using namespace std;
 #include <QMessageBox>
 #include <QSettings>
 #include <QString>
+#include <QUrl>         
 
 #include "patchexchange.h"
 
@@ -59,9 +60,20 @@ void patchExchange::testUser( QString url, QString userid, QString passwd ) {
 }
 
 void patchExchange::getDropdowns( QString url ) {
-	
+
+  // Added the OS string in 0.7 to get some idea of what platform most users are on
+#ifdef Q_WS_X11
+  const QString OS = "Linux";
+#endif
+#ifdef Q_WS_WIN
+  const QString OS = "Windows";
+#endif
+#ifdef Q_WS_MAC
+  const QString OS = "Mac";
+#endif
+  
 	host_id = http->setHost( url );
-	dd_id = http->get( "/EPX/epx.php?action=dropdownData", html_buff );
+	dd_id = http->get( "/EPX/epx.php?action=dropdownData&OS=" + OS, html_buff );
 }
 
 void patchExchange::insertPatch( 
@@ -75,18 +87,28 @@ void patchExchange::insertPatch(
 				  QString isprivate,
 				  QString tags,
 				  QString hex_patch ) {
-	
 
-	host_id = http->setHost( url );
-	ins_id = http->get( "/EPX/epx.php?action=insertPatch&userid=" + userid + "&passwd=" + passwd +
-						"&name=" + patch_name.replace( " ", "%20" ) +
-						"&origin=" + origin.replace( " ", "%20" ) +
-						"&type=" + patch_type.replace( " ", "%20" ) +
-						"&desc=" + description.replace( " ", "%20" ) +
-						"&private=" + isprivate +
-						"&tags=" + tags.replace( " ", "%20" ) +
-						"&hexpatch=" + hex_patch,
-					  html_buff );
+    QString encoded;
+    QList<QPair<QString, QString> > ql;
+    QUrl    tmp_url;
+                    
+    ql.append( QPair<QString, QString>("action", "insertPatch"));
+    ql.append( QPair<QString, QString>( "userid",userid ));
+    ql.append( QPair<QString, QString>( "passwd",passwd ));
+    ql.append( QPair<QString, QString>( "name",patch_name ));
+    ql.append( QPair<QString, QString>( "origin",origin ));
+    ql.append( QPair<QString, QString>( "type",patch_type ));
+    ql.append( QPair<QString, QString>( "desc",description ));
+    ql.append( QPair<QString, QString>( "private",isprivate ));
+    ql.append( QPair<QString, QString>( "tags", tags));
+    ql.append( QPair<QString, QString>( "hexpatch",hex_patch ));
+    
+    tmp_url.setQueryItems( ql );
+    encoded = tmp_url.encodedQuery();
+
+    host_id = http->setHost( url );
+
+    ins_id = http->get( "/EPX/epx.php?" + encoded, html_buff );
 }
 				  
 void patchExchange::query( QString url,
@@ -97,15 +119,26 @@ void patchExchange::query( QString url,
 						 	QString contrib,
 						 	QString origin,
 						 	QString tags ) {
-	
-	host_id = http->setHost( url );	
-	qry_id = http->get( "/EPX/epx.php?action=query&userid=" + userid + "&passwd=" + passwd +
-						"&type=" + ptype +
-						"&since=" + since.replace( " ", "%20" ) +
-						"&contrib=" + contrib +
-						"&origin=" + origin.replace( " ", "%20" ) +
-						"&tags=" + tags.replace( " ", "%20" ) ,
-						html_buff );	
+
+    QString encoded;
+    QList<QPair<QString, QString> > ql;
+    QUrl    tmp_url;
+
+    ql.append( QPair<QString, QString>("action", "query"));
+    ql.append( QPair<QString, QString>( "userid",userid ));
+    ql.append( QPair<QString, QString>( "passwd",passwd ));
+    ql.append( QPair<QString, QString>( "type",ptype ));
+    ql.append( QPair<QString, QString>( "since",since ));
+    ql.append( QPair<QString, QString>( "contrib",contrib ));
+    ql.append( QPair<QString, QString>( "origin",origin ));
+    ql.append( QPair<QString, QString>( "tags",tags ));
+    
+    tmp_url.setQueryItems( ql );
+    encoded = tmp_url.encodedQuery();
+    
+	host_id = http->setHost( url );
+    
+	qry_id = http->get( "/EPX/epx.php?" + encoded, html_buff );
 }
 
 void patchExchange::getDetails( QString url,
@@ -194,14 +227,16 @@ void patchExchange::finished( int id, bool error ) {
 }
 
 QString patchExchange::requestStatus() {
-	
+
+    QByteArray tmp;
 	QString	status;
-	
+  
 	int sstart = html_arr->lastIndexOf("<body>") + 7;
 	int sfinish = html_arr->lastIndexOf("</body>") - 2;
-	
-	status = html_arr->mid( sstart, sfinish - sstart );
+    tmp = html_arr->mid( sstart, sfinish - sstart );
+    status = QString::fromUtf8( tmp.constData(), tmp.length()); // required so that UTF8 chars do not get mangled
 
+//cout << qPrintable( status );
 	return status;
 }
 
