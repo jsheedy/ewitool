@@ -1,30 +1,31 @@
-<ui version="4.0" >
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
  <author>Steve Merrony</author>
  <class>ClipboardForm</class>
- <widget class="QWidget" name="ClipboardForm" >
-  <property name="geometry" >
+ <widget class="QWidget" name="ClipboardForm">
+  <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
     <width>276</width>
-    <height>642</height>
+    <height>577</height>
    </rect>
   </property>
-  <property name="windowTitle" >
+  <property name="windowTitle">
    <string>Form</string>
   </property>
-  <widget class="QListWidget" name="clipboard_listWidget" >
-   <property name="geometry" >
+  <widget class="QListWidget" name="clipboard_listWidget">
+   <property name="geometry">
     <rect>
      <x>10</x>
      <y>40</y>
      <width>261</width>
-     <height>521</height>
+     <height>451</height>
     </rect>
    </property>
   </widget>
-  <widget class="QLabel" name="label" >
-   <property name="geometry" >
+  <widget class="QLabel" name="label">
+   <property name="geometry">
     <rect>
      <x>10</x>
      <y>10</y>
@@ -32,112 +33,112 @@
      <height>20</height>
     </rect>
    </property>
-   <property name="text" >
+   <property name="text">
     <string>Clipboard</string>
    </property>
-   <property name="alignment" >
+   <property name="alignment">
     <set>Qt::AlignCenter</set>
    </property>
   </widget>
-  <widget class="QPushButton" name="clearClipboard_pushButton" >
-   <property name="enabled" >
+  <widget class="QPushButton" name="clearClipboard_pushButton">
+   <property name="enabled">
     <bool>true</bool>
    </property>
-   <property name="geometry" >
+   <property name="geometry">
     <rect>
      <x>10</x>
-     <y>570</y>
+     <y>500</y>
      <width>80</width>
      <height>27</height>
     </rect>
    </property>
-   <property name="text" >
+   <property name="text">
     <string>&amp;Clear</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="deleteClipboard_pushButton" >
-   <property name="enabled" >
+  <widget class="QPushButton" name="deleteClipboard_pushButton">
+   <property name="enabled">
     <bool>true</bool>
    </property>
-   <property name="geometry" >
+   <property name="geometry">
     <rect>
      <x>100</x>
-     <y>570</y>
+     <y>500</y>
      <width>80</width>
      <height>27</height>
     </rect>
    </property>
-   <property name="text" >
+   <property name="text">
     <string>&amp;Delete</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="renameClipboard_pushButton" >
-   <property name="enabled" >
+  <widget class="QPushButton" name="renameClipboard_pushButton">
+   <property name="enabled">
     <bool>true</bool>
    </property>
-   <property name="geometry" >
+   <property name="geometry">
     <rect>
      <x>190</x>
-     <y>570</y>
+     <y>500</y>
      <width>80</width>
      <height>27</height>
     </rect>
    </property>
-   <property name="text" >
+   <property name="text">
     <string>&amp;Rename</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="viewHexClipboard_pushButton" >
-   <property name="enabled" >
+  <widget class="QPushButton" name="viewHexClipboard_pushButton">
+   <property name="enabled">
     <bool>true</bool>
    </property>
-   <property name="geometry" >
+   <property name="geometry">
     <rect>
      <x>10</x>
-     <y>610</y>
+     <y>540</y>
      <width>80</width>
      <height>27</height>
     </rect>
    </property>
-   <property name="text" >
+   <property name="text">
     <string>&amp;View Hex</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="exchangeClipboard_pushButton" >
-   <property name="enabled" >
+  <widget class="QPushButton" name="exchangeClipboard_pushButton">
+   <property name="enabled">
     <bool>true</bool>
    </property>
-   <property name="geometry" >
+   <property name="geometry">
     <rect>
      <x>100</x>
-     <y>610</y>
+     <y>540</y>
      <width>80</width>
      <height>27</height>
     </rect>
    </property>
-   <property name="toolTip" >
+   <property name="toolTip">
     <string>Share/store Patch in the Patch Exchange</string>
    </property>
-   <property name="text" >
+   <property name="text">
     <string>E&amp;xchange</string>
    </property>
   </widget>
-  <widget class="QPushButton" name="exportClipboard_pushButton" >
-   <property name="enabled" >
+  <widget class="QPushButton" name="exportClipboard_pushButton">
+   <property name="enabled">
     <bool>true</bool>
    </property>
-   <property name="geometry" >
+   <property name="geometry">
     <rect>
      <x>190</x>
-     <y>610</y>
+     <y>540</y>
      <width>80</width>
      <height>27</height>
     </rect>
    </property>
-   <property name="toolTip" >
+   <property name="toolTip">
     <string>Export Patch to File</string>
    </property>
-   <property name="text" >
+   <property name="text">
     <string>&amp;Export</string>
    </property>
   </widget>
