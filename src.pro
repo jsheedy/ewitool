@@ -19,7 +19,8 @@ mainwindow.cpp \
  RtMidi.cpp \
  patchexchangegui.cpp \
  ewi4000spatch.cpp \
- midilistener.cpp
+ midilistener.cpp \
+ keyPrograms_form.cpp
 HEADERS += mainwindow.h \
  midi_data.h \
  midiportsdialog.h \
@@ -35,7 +36,9 @@ HEADERS += mainwindow.h \
  RtMidi.h \
  patchexchangegui.h \
  ewi4000spatch.h \
- midilistener.h
+ midilistener.h \
+ keyPrograms_form.h \
+ ewi4000sQuickPC.h
 unix {
     LIBS += -lasound
     DEFINES += __LINUX_ALSASEQ__ 
@@ -53,9 +56,13 @@ FORMS += mainwindow.ui \
  settings_dialog.ui \
  epxSubmit_dialog.ui \
  clipboardform.ui \
- patchExchange_form.ui
+ patchExchange_form.ui \
+ keyPrograms_form.ui
 
 RESOURCES -= application.qrc
 
 DISTFILES += ../CHANGES
+
+# CONFIG -= release \
+# stl
 
