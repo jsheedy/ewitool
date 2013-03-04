@@ -78,6 +78,7 @@ MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Q
 	connect(action_Random_Patch, 	SIGNAL(triggered()), this, SLOT(randomPatch()));
 	connect(actionMake_Dry, 		SIGNAL(triggered()), this, SLOT(makeDry()));
 	connect(actionRemove_Noise, 	SIGNAL(triggered()), this, SLOT(deNoise()));
+        connect(actionMax_Volume,       SIGNAL(triggered()), this, SLOT(maxVolPatch()));
 	connect(action_Randomise_10, 	SIGNAL(triggered()), this, SLOT(randomisePatch()));
 	connect(action_Merge_With, 		SIGNAL(triggered()), this, SLOT(mergePatch()));
 	
@@ -95,6 +96,7 @@ MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Q
 	//epx_tab->setEnabled( false );  	// EPX tab disabled unless we can connect to EPX
 	setupPatchTab();
 	setupLibraryTab();
+        setupKeyPatchesTab();
 	
 	QSettings settings( "EWItool", "EWItool" );
 	if (settings.contains( "PatchExchange/UserID" )) {
@@ -127,7 +129,7 @@ void MainWindow::loadSettings() {
 		else {
 			QSettings settings( "EWItool", "EWItool" );
 			settings.setValue( "library/location", libraryLocation );
-			QDir::QDir( libraryLocation ).mkdir( EXPORT_DIR );		// create an export subdirectory
+			QDir( libraryLocation ).mkdir( EXPORT_DIR );		// create an export subdirectory
 		}
 	} else {
 		libraryLocation = settings.value( "library/location" ).toString();
@@ -149,33 +151,38 @@ void MainWindow::settings() {
 // tabSet handlers...
 
 void MainWindow::tabChanged( int new_tab ) {
-	// conextualise the menus etc.
-	switch ( new_tab ) {
-		case LIBRARY_TAB:
-			action_Import->setEnabled( true );
-			actionSave_As->setEnabled( false );
-			actionPrint->setEnabled( true );
-			break;
-		case EPX_TAB:
-			action_Import->setEnabled( false );
-			actionSave_As->setEnabled( false );
-			actionPrint->setEnabled( false );
-			//epx->getStats();
-			break;
-		case EWI_TAB:
-			action_Import->setEnabled( false );
-			actionSave_As->setEnabled( true );
-			actionPrint->setEnabled( true );
-			break;
-		case PATCH_TAB:
-			action_Import->setEnabled( false );
-			actionSave_As->setEnabled( false );
-			actionPrint->setEnabled( true );
-			break;
-		default:
-			cerr << "Oops - unexpected tab change signal";
-	}
-	
+    // conextualise the menus etc.
+    switch ( new_tab ) {
+    case LIBRARY_TAB:
+        action_Import->setEnabled( true );
+        actionSave_As->setEnabled( false );
+        actionPrint->setEnabled( true );
+        break;
+    case EPX_TAB:
+        action_Import->setEnabled( false );
+        actionSave_As->setEnabled( false );
+        actionPrint->setEnabled( false );
+        //epx->getStats();
+        break;
+    case EWI_TAB:
+        action_Import->setEnabled( false );
+        actionSave_As->setEnabled( true );
+        actionPrint->setEnabled( true );
+        break;
+    case PATCH_TAB:
+        action_Import->setEnabled( false );
+        actionSave_As->setEnabled( false );
+        actionPrint->setEnabled( true );
+        break;
+    case KEYPATCH_TAB:
+        action_Import->setEnabled( false );
+        actionSave_As->setEnabled( false );
+        actionPrint->setEnabled( true );
+        break;
+    default:
+        cerr << "Oops - unexpected tab change signal";
+    }
+
 }
 
 // handlers fror the top-level menu items
@@ -240,6 +247,13 @@ void MainWindow::import() {
 	// skip the header
 	file.reset();
 	rc = inp.skipRawData( body_start );
+        if (rc != body_start) {
+            QMessageBox::warning( this,
+                                  "EWItool",
+                                  tr( "Import Error\n\nUnknown Soundbank format (Can't find 1st patch)" ) );
+            QApplication::restoreOverrideCursor();
+            return;
+        }
 	
 	// try to read the rest of the soundbank into patchSet[]
 	setContents_listWidget->clear();
@@ -307,6 +321,9 @@ void MainWindow::print() {
 		case PATCH_TAB:
 		 	printCurrentPatch();
 		 	break;
+      case KEYPATCH_TAB:
+            keyPrograms->printQuickPCs();
+            break;      
 	}
 }
 
@@ -326,8 +343,8 @@ void MainWindow::about() {
 	QMessageBox::about(this,  
 					   "About EWItool",
 					   "<center><b>EWItool</b><br><br>"
-						"Version: 0.6<br><br>"
-						"&copy; 2008 Steve Merrony<br><br>"
+                                                "Version: 0.7B2<br><br>"
+                        "&copy; 2009-2013 Steve Merrony<br><br>"
 						"Please see<br>"
 						"<a href='http://code.google.com/p/ewitool/'>http://code.google.com/p/ewitool/</a><br>"
 						"for more information</center>" );
@@ -457,6 +474,7 @@ void MainWindow::setupPatchTab() {
 	connect(noisefilter1_sweepTime_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	connect(noisefilter1_breathCurve_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 			
+
 	connect(noisefilter2_Q_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	connect(noisefilter2_keyFollow_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
 	connect(noisefilter2_breathMod_dial, SIGNAL(valueChanged(int)), this, SLOT(changeDial(int)));
@@ -530,6 +548,10 @@ void MainWindow::setupEWItab() {
 	
 }
 
+void MainWindow::setupKeyPatchesTab() {
+
+    keyPrograms = new keyPrograms_form( keyPatches_widget, mididata );
+}
 
 void MainWindow::savePatchSetAs() {
 	
@@ -654,6 +676,9 @@ void MainWindow::saveCurrentPatch() {
 	
 	// copy patch into the EWI patch set
 	patchSet[edit_patch.parameters.patch_num] = edit_patch;
+
+    // copy the patch into MidiData
+    mididata->patches[edit_patch.parameters.patch_num] = edit_patch;
 }
 
 /**
@@ -764,7 +789,7 @@ void MainWindow::printCurrentPatch() {
 	
 	QPrinter *printer = new QPrinter();
 	printer->setOrientation( QPrinter::Portrait );
-	printer->setResolution( 300 );
+	printer->setResolution( 600 );
 	printer->setOutputFormat( QPrinter::PostScriptFormat );
 	//printer.setup( this );
 	
@@ -1289,6 +1314,25 @@ void MainWindow::deNoise() {
 	noisefilter2_LFOthreshold_dial->setValue( 0 );
 	noisefilter2_sweepTime_dial->setValue( 0 );
 	noisefilter2_sweepDepth_dial->setValue( 64 );
+}
+
+void MainWindow::maxVolPatch() {
+
+  int orig_max = 0;
+  float factor = 0.0;
+
+  // find highest level
+  orig_max = osc1_level_verticalSlider->value();
+  if (osc2_level_verticalSlider->value() > orig_max) orig_max = osc2_level_verticalSlider->value();
+  if (ampLevel_verticalSlider->value() > orig_max) orig_max = ampLevel_verticalSlider->value();
+  if (octaveLevel_verticalSlider->value() > orig_max) orig_max = octaveLevel_verticalSlider->value();
+
+  factor = 127.0 / orig_max;
+    
+  osc1_level_verticalSlider->setValue(osc1_level_verticalSlider->value() * factor);
+  osc2_level_verticalSlider->setValue(osc2_level_verticalSlider->value() * factor);
+  ampLevel_verticalSlider->setValue(ampLevel_verticalSlider->value() * factor);
+  octaveLevel_verticalSlider->setValue(octaveLevel_verticalSlider->value() * factor);
 }
 
 void MainWindow::randomPatch() {

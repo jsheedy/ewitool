@@ -36,6 +36,7 @@
 #include "midi_data.h"
 #include "patchexchange.h"
 #include "patchexchangegui.h"
+#include "keyPrograms_form.h"
 
 const QString	HELP_URL			= "http://code.google.com/p/ewitool/wiki/Using_EWItool";
 const QString	GPL3_URL			= "http://www.gnu.org/licenses/gpl-3.0.txt";
@@ -45,6 +46,7 @@ const int		LIBRARY_TAB			= 0;
 const int		EPX_TAB				= 1;
 const int		EWI_TAB				= 2;
 const int		PATCH_TAB			= 3;
+const int       KEYPATCH_TAB        = 4;
 
 class MainWindow: public QMainWindow, public Ui::MainWindow{
 Q_OBJECT
@@ -82,6 +84,7 @@ Q_OBJECT
 		void randomPatch();
 		void randomisePatch();
 		void mergePatch();
+        void maxVolPatch();
 		void mixInPatch( int, int );
 		
 		void setList_chosen(QListWidgetItem *);
@@ -104,6 +107,7 @@ Q_OBJECT
 		void setupPatchTab();
 		void setupLibraryTab();
 		void setupEWItab();
+        void setupKeyPatchesTab();
 		//void contextMenuEvent( QContextMenuEvent *);
 		void savePatchSetAs();
 		void printEWIpatches();
@@ -130,6 +134,7 @@ Q_OBJECT
 		midi_data *mididata;
 		
 		EWIListWidget 	*EWIList;
+        keyPrograms_form *keyPrograms;
 		patchExchange	*epx;
 		patchExchangeGUI *epxGUI;
 		Clipboard		*clipboard;
