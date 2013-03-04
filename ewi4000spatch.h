@@ -26,8 +26,8 @@
 
 #include <QString>
 
-const int 	EWI_NUM_PATCHES 		= 100;
-const int 	EWI_PATCH_LENGTH 		= 206;
+const int 	EWI_NUM_PATCHES 		= 100;  // 0..99
+const int 	EWI_PATCH_LENGTH 		= 206;  // bytes
 const int 	EWI_PATCHNAME_LENGTH 	= 32;
 const char 	EWI_EDIT 				= 0x20;
 const char 	EWI_SAVE 				= 0x00;
