@@ -21,7 +21,7 @@
 #define PASTEPATCH_DIALOG_H
 
 /**
-	@author Steve Merrony <ewitool At merrony dot flyer dot co dot uk>
+        @author Steve Merrony <ewitool At merrony dot flyer dot co dot uk>
 */
 
 #include <QDialog>
@@ -32,16 +32,16 @@
 #include "ui_pastePatch_dialog.h"
 
 class pastePatch_dialog : public QDialog, Ui::pastePatch_dialog {
-	Q_OBJECT
-			
+        Q_OBJECT
+
 public:
     pastePatch_dialog( int, Clipboard * );
 
     ~pastePatch_dialog();
-	int chosenRow;
-	
+        int chosenRow;
+
 private slots:
-	void accept();
+        void accept();
 };
 
 #endif
