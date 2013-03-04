@@ -42,7 +42,7 @@ MidiListener::MidiListener( QObject *parent )
 	// midi_data_shr = shared_data;
 	tmidi_data = (midi_data *)parent;
 	
-	if (tmidi_data->verboseMode) cout << "MIDI Listener thread created\n";
+	if (tmidi_data->verboseMode) cout << "MIDIListener thread created\n";
 }
 
 MidiListener::~MidiListener()
@@ -71,27 +71,53 @@ void MidiListener::run() {
 
 		if ( nBytes > 0 ) {
 
-			if ( message[0] == 0xf0 ) { // SysEx
+			if ( message[0] == MIDI_SYSEX_HEADER ) {
+              // if ( tmidi_data->verboseMode ) cout << "MidiListener: SysEx response received " << nBytes << " bytes\n";
+              switch (message[4]) {
+                case MIDI_PRESET_DUMP:            
+				  if ( tmidi_data->verboseMode ) cout << "MidiListener: SysEx Preset Dump response received " << nBytes << " bytes\n";
 
-				if ( tmidi_data->verboseMode ) cout << "MidiListener: SysEx response received " << nBytes << " bytes\n";
+				  patch_t this_patch;
 
-				patch_t this_patch;
+                  if (nBytes != EWI_SYSEX_PRESET_DUMP_LEN) {
+                    cout << "Invalid Preset Dump received from EWI (" << nBytes << " bytes)\n";
+                    break;
+                  }
+                  
+				  for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) this_patch.whole_patch[i] = message[i];
 
-				for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) this_patch.whole_patch[i] = message[i];
+                  if ( this_patch.parameters.header[3] == MIDI_SYSEX_ALLCHANNELS ) {
+					  this_patch_num = ( int ) this_patch.parameters.patch_num++;
+                      if (this_patch_num < 0 || this_patch_num >= EWI_NUM_PATCHES) {
+                        cout << "Illegal patch number recieved from EWI - " << this_patch_num << "\n";
+                        break;                  
+                      }               
+					  for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) tmidi_data->patches[this_patch_num].whole_patch[i] = message[i];
+					  tmidi_data->last_patch_loaded = this_patch_num;
 
-				if ( this_patch.parameters.header[3] == 0x7f ) {
-					this_patch_num = ( int ) this_patch.parameters.patch_num++;
-					for ( int i = 0; i < EWI_PATCH_LENGTH; i++ ) tmidi_data->patches[this_patch_num].whole_patch[i] = message[i];
-					tmidi_data->last_patch_loaded = this_patch_num;
-
-					if ( tmidi_data->verboseMode ) cout << "MidiListener: Received " << this_patch_num + 1 << " - " << this_patch.parameters.name << "\n";
-				}
-
-				tmidi_data->mymutex.lock();
-
-				tmidi_data->sysexDone.wakeAll();
-				tmidi_data->mymutex.unlock();
-			}		// Everything else is thrown away
+					  if ( tmidi_data->verboseMode ) cout << "MidiListener: Received " << this_patch_num + 1 << " - " << this_patch.parameters.name << "\n";
+				  }
+                  break;
+                case MIDI_QUICKPC_DUMP:
+                  if ( tmidi_data->verboseMode ) cout << "MidiListener: SysEx QuickPC Dump response received " << nBytes << " bytes\n";
+                  if (nBytes != EWI_SYSEX_QUICKPC_DUMP_LEN) {
+                    cout << "Invalid QuickPC Dump received from EWI (" << nBytes << " bytes)\n";
+                    break;
+                  }
+                  for (int i = 0; i < EWI_NUM_QUICKPCS; i++) {
+                    tmidi_data->quickPCs[i] = message[i+6];
+                  }
+                  break;
+                default:
+                   cerr << "MidiListener: Unrecognised SysEx type received (type " << message[4] <<")\n";
+                  break;
+              }            
+			  tmidi_data->mymutex.lock();
+              tmidi_data->sysexDone.wakeAll();
+			  tmidi_data->mymutex.unlock();
+              
+            }
+              // All non-SysEx messages are ignored
 		}
 
 		SLEEP( 10 );
