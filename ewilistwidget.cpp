@@ -52,12 +52,15 @@ EWIListWidget::EWIListWidget( QWidget *parent )
 			QLCDNumber *EWI_patch_num = new QLCDNumber( 3 );
 			EWI_patch_num->setSegmentStyle(QLCDNumber::Filled);
 			EWI_patch_num->display( (col/2)*20 + row + 1 );
+			EWI_patch_num->setFrameStyle( QFrame::NoFrame );
 			EWI_grid->addWidget( EWI_patch_num, row, (col/2)*2 );
-			EWI_patch_num->setSizePolicy( QSizePolicy::Fixed, QSizePolicy::Fixed );
+            EWI_patch_num->setFixedHeight( 18 );
+			//EWI_patch_num->setSizePolicy( QSizePolicy::Fixed, QSizePolicy::Fixed );
 			
 			// now the name button
 			QPushButton *name_button = new QPushButton( QString( "          <Empty " + QString().setNum( row + 20*(col/2) + 1 ) + ">          ") );
-			name_button->resize( 60, 20 );
+			//name_button->resize( 60, 10 );
+            name_button->setFixedHeight( 22 );
 			name_button->setFont( font );
 			patch_button_list.append( name_button );
 			name_button->setCheckable( false );		// makes it a 'toggle' button
