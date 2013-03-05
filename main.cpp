@@ -70,12 +70,12 @@ For more information please visit http://code.google.com/p/ewitool/ \n";
 	app.setQuitOnLastWindowClosed( true );
 	MainWindow mw( main_midi_data );
 	mw.show();
-	  
-	// On Linux received MIDI data is handled in a separate thread
-//#ifdef Q_WS_X11
+
 	MidiListener *mlThread = new MidiListener( (QObject *) main_midi_data );
 	mlThread->start();
-//#endif
 	
-	return app.exec();
+    const int retval = app.exec();
+    mlThread->terminate();
+    delete main_midi_data;
+    return retval;
 }
