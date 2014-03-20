@@ -21,7 +21,8 @@
 #define PATCHEXCHANGE_H
 
 #include <QBuffer>
-#include <QHttp>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QObject>
 
 /**
@@ -70,11 +71,13 @@ class patchExchange : public QObject {
 		
 	private slots:
 		//void httpDone( bool );
-		void finished( int, bool);
+        //void finished( int, bool);
+        void finished( QNetworkReply * );
 		void exchangeClipboardResponse( QString response );
 		
 	private:
-		QHttp *http;
+        QNetworkAccessManager *qnam;
+        QNetworkRequest request;
 		QBuffer *html_buff;
 		QByteArray *html_arr;
 		QWidget *owner;

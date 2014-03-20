@@ -45,7 +45,7 @@ using namespace std;
 #include "pastepatch_dialog.h"
 #include "settings_dialog.h"
 
-MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Qt::WFlags f )
+MainWindow::MainWindow( volatile midi_data *shared_midi_data,QWidget * parent, Qt::WindowFlags f )
 	: QMainWindow(parent, f)
 {
 	mididata = (midi_data *) shared_midi_data;
@@ -343,8 +343,8 @@ void MainWindow::about() {
 	QMessageBox::about(this,  
 					   "About EWItool",
 					   "<center><b>EWItool</b><br><br>"
-                                                "Version: 0.7B2<br><br>"
-                        "&copy; 2009-2013 Steve Merrony<br><br>"
+						"Version: 0.7B3<br><br>"
+			"&copy; 2009-2014 Steve Merrony<br><br>"
 						"Please see<br>"
 						"<a href='http://code.google.com/p/ewitool/'>http://code.google.com/p/ewitool/</a><br>"
 						"for more information</center>" );
@@ -790,7 +790,7 @@ void MainWindow::printCurrentPatch() {
 	QPrinter *printer = new QPrinter();
 	printer->setOrientation( QPrinter::Portrait );
 	printer->setResolution( 600 );
-	printer->setOutputFormat( QPrinter::PostScriptFormat );
+    //printer->setOutputFormat( QPrinter::PostScriptFormat );
 	//printer.setup( this );
 	
 	QPrintDialog *dialog = new QPrintDialog( printer, this );

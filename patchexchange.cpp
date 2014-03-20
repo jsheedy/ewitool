@@ -1,6 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2008 by Steve Merrony   *
- *   steve@brahma   *
+ *   Copyright (C) 2008-2014 by Steve Merrony                              *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -20,60 +19,61 @@
 #include <iostream>
 using namespace std;
 
+#include <QByteArray>
 #include <QMessageBox>
+#include <QNetworkRequest>
 #include <QSettings>
 #include <QString>
 #include <QUrl>         
 
 #include "patchexchange.h"
 
-patchExchange::patchExchange( QWidget * parent) :QObject( parent )
-{
+patchExchange::patchExchange( QWidget * parent) :QObject( parent ) {
 	owner = parent;
-	http = new QHttp( this );
+    qnam = new QNetworkAccessManager( this );
 	html_arr = new QByteArray();
 	html_buff = new QBuffer( html_arr );
 	
 	host_id = 0;	ct_id = 0;	vu_id = 0;	dd_id = 0;	ins_id = 0;	
 	qry_id = 0, details_id = 0; delete_id = 0; stats_id = 0;
 	
-	//connect( http, SIGNAL( done(bool) ), this, SLOT( httpDone( bool ) ) );
-	connect( http, SIGNAL( requestFinished( int, bool )), this, SLOT( finished( int, bool ) ) );
+    //connect( qnam, SIGNAL( requestFinished( int, bool )), this, SLOT( finished( int, bool ) ) );
+    connect( qnam, SIGNAL( finished( QNetworkReply* )), this, SLOT( finished( QNetworkReply* ) ) );
 	
 }
 
 
-patchExchange::~patchExchange()
-{
-}
+patchExchange::~patchExchange() { }
 
 void patchExchange::testConnection( QString url ) {
 	
-	host_id = http->setHost( url );
-	ct_id = http->get( "/EPX/epx.php?action=connectionTest", html_buff );
+    request.setUrl( QUrl( "http://" + url + "/EPX/epx.php?action=connectionTest" ) );
+    QNetworkReply *reply = qnam->get( request );
 }
 
 void patchExchange::testUser( QString url, QString userid, QString passwd ) {
 	
-	host_id = http->setHost( url );
-	vu_id = http->get( "/EPX/epx.php?action=validUser&userid=" + userid + "&passwd=" + passwd, html_buff );
+    request.setUrl( QUrl( "http://" + url + "/EPX/epx.php?action=validUser&userid=" + userid + "&passwd=" + passwd ) );
+    QNetworkReply *reply = qnam->get( request );
 }
 
 void patchExchange::getDropdowns( QString url ) {
 
+    QString OS;
+
   // Added the OS string in 0.7 to get some idea of what platform most users are on
-#ifdef Q_WS_X11
-  const QString OS = "Linux";
+#ifdef Q_OS_LINUX
+  OS = "Linux";
 #endif
-#ifdef Q_WS_WIN
-  const QString OS = "Windows";
+#ifdef Q_OS_WIN
+  OS = "Windows";
 #endif
-#ifdef Q_WS_MAC
-  const QString OS = "Mac";
+#ifdef Q_OS_MAC
+  OS = "Mac";
 #endif
   
-	host_id = http->setHost( url );
-	dd_id = http->get( "/EPX/epx.php?action=dropdownData&OS=" + OS, html_buff );
+    request.setUrl( QUrl( "http://" + url + "/EPX/epx.php?action=dropdownData&OS=" + OS ) );
+    QNetworkReply *reply = qnam->get( request );
 }
 
 void patchExchange::insertPatch( 
@@ -88,27 +88,25 @@ void patchExchange::insertPatch(
 				  QString tags,
 				  QString hex_patch ) {
 
-    QString encoded;
-    QList<QPair<QString, QString> > ql;
+
+    QByteArray urlBA;
     QUrl    tmp_url;
-                    
-    ql.append( QPair<QString, QString>("action", "insertPatch"));
-    ql.append( QPair<QString, QString>( "userid",userid ));
-    ql.append( QPair<QString, QString>( "passwd",passwd ));
-    ql.append( QPair<QString, QString>( "name",patch_name ));
-    ql.append( QPair<QString, QString>( "origin",origin ));
-    ql.append( QPair<QString, QString>( "type",patch_type ));
-    ql.append( QPair<QString, QString>( "desc",description ));
-    ql.append( QPair<QString, QString>( "private",isprivate ));
-    ql.append( QPair<QString, QString>( "tags", tags));
-    ql.append( QPair<QString, QString>( "hexpatch",hex_patch ));
-    
-    tmp_url.setQueryItems( ql );
-    encoded = tmp_url.encodedQuery();
 
-    host_id = http->setHost( url );
+    urlBA.append( "?action=insertPatch" );
+    urlBA.append( "&userid=" + userid );
+    urlBA.append( "&passwd=" + passwd );
+    urlBA.append( "&name=" + patch_name.toHtmlEscaped() );
+    urlBA.append( "&origin=" + origin.toHtmlEscaped() );
+    urlBA.append( "&type=" + patch_type );
+    urlBA.append( "&desc=" + description.toHtmlEscaped() );
+    urlBA.append( "&private=" + isprivate );
+    urlBA.append( "&tags=" + tags.toHtmlEscaped() );
+    urlBA.append( "&hexpatch=" + hex_patch );
 
-    ins_id = http->get( "/EPX/epx.php?" + encoded, html_buff );
+    tmp_url = QUrl( "http://" + url + "/EPX/epx.php" + QString( urlBA ) );
+    request.setUrl( tmp_url );
+
+    QNetworkReply *reply = qnam->get( request );
 }
 				  
 void patchExchange::query( QString url,
@@ -120,43 +118,41 @@ void patchExchange::query( QString url,
 						 	QString origin,
 						 	QString tags ) {
 
-    QString encoded;
-    QList<QPair<QString, QString> > ql;
+    QByteArray urlBA;
     QUrl    tmp_url;
+    
+    urlBA.append( "?action=query" );
+    urlBA.append( "&userid=" + userid );
+    urlBA.append( "&passwd=" + passwd );
+    urlBA.append( "&type=" + ptype );
+    urlBA.append( "&since=" + since );
+    urlBA.append( "&contrib=" + contrib.toHtmlEscaped() );
+    urlBA.append( "&origin=" + origin.toHtmlEscaped() );
+    urlBA.append( "&tags=" + tags.toHtmlEscaped() );
 
-    ql.append( QPair<QString, QString>("action", "query"));
-    ql.append( QPair<QString, QString>( "userid",userid ));
-    ql.append( QPair<QString, QString>( "passwd",passwd ));
-    ql.append( QPair<QString, QString>( "type",ptype ));
-    ql.append( QPair<QString, QString>( "since",since ));
-    ql.append( QPair<QString, QString>( "contrib",contrib ));
-    ql.append( QPair<QString, QString>( "origin",origin ));
-    ql.append( QPair<QString, QString>( "tags",tags ));
-    
-    tmp_url.setQueryItems( ql );
-    encoded = tmp_url.encodedQuery();
-    
-	host_id = http->setHost( url );
-    
-	qry_id = http->get( "/EPX/epx.php?" + encoded, html_buff );
+    tmp_url = QUrl( "http://" + url + "/EPX/epx.php" + QString( urlBA ) );
+    request.setUrl( tmp_url );
+
+    QNetworkReply *reply = qnam->get( request );
 }
 
 void patchExchange::getDetails( QString url,
 								QString userid, 
 								QString passwd, 
 								int patch_id ) {
-	host_id = http->setHost( url );	
+
 	QString id_str;
 	id_str.setNum( patch_id );
-	details_id = http->get( "/EPX/epx.php?action=fetchPatch&userid=" + userid + "&passwd=" + passwd +
-							"&id=" + id_str,
-							html_buff );
+
+    request.setUrl( QUrl( "http://" + url + "/EPX/epx.php?action=fetchPatch&userid=" + userid +
+                          "&passwd=" + passwd + "&id=" + id_str ) );
+    QNetworkReply *reply = qnam->get( request );
 }
 
 void patchExchange::getStats( QString url ) {
-	  host_id = http->setHost( url );	
-	  stats_id = http->get( "/EPX/epx.php?action=stats",
-	 						html_buff );
+
+      request.setUrl( QUrl( "http://" + url + "/EPX/epx.php?action=stats" ) );
+      QNetworkReply *reply = qnam->get( request );
 }
 
 void patchExchange::deletePatch( QString url,
@@ -164,14 +160,49 @@ void patchExchange::deletePatch( QString url,
 								QString passwd, 
 								int patch_id ) {
 									
-	host_id = http->setHost( url );	
 	QString id_str;
 	id_str.setNum( patch_id );
-	delete_id = http->get( "/EPX/epx.php?action=deletePatch&userid=" + userid + "&passwd=" + passwd +
-							"&id=" + id_str,
-						html_buff );
+    request.setUrl( QUrl( "http://" + url + "/EPX/epx.php?action=deletePatch&userid=" + userid +
+                          "&passwd=" + passwd + "&id=" + id_str ) );
+    QNetworkReply *reply = qnam->get( request );
 }
 
+void patchExchange::finished( QNetworkReply* reply ) {
+
+    QByteArray responseBA = reply->readAll();
+
+    // get action that was requested from header meta data
+    int hstart = responseBA.lastIndexOf( "EPX-Requested-Action" ) + 22;
+    int hfinish = responseBA.lastIndexOf("</head>") - 2;
+    QByteArray htmp = responseBA.mid( hstart, hfinish - hstart );
+    // extract to content
+    QString requestedAction = htmp.mid( htmp.indexOf( '"' ) + 1 , htmp.lastIndexOf( '"' ) - htmp.indexOf( '"' ) -1 );
+
+
+    int bstart = responseBA.lastIndexOf("<body>") + 7;
+    int bfinish = responseBA.lastIndexOf("</body>") - 2;
+    QByteArray tmp = responseBA.mid( bstart, bfinish - bstart );
+    QString status = QString::fromUtf8( tmp.constData(), tmp.length()); // required so that UTF8 chars do not get mangled
+
+    if (requestedAction == "connectionTest") emit connectionState( status );
+
+    if (requestedAction == "validUser")      emit loginState( status );
+
+    if (requestedAction == "dropdownData")   emit dropdownData( status.split( "\n" ) );
+
+    if (requestedAction == "insertPatch")    emit insertResponse( status );
+
+    if (requestedAction == "deletePatch")    emit deleteResponse( status );
+
+    if (requestedAction == "query")          emit queryResponse( status );
+
+    if (requestedAction == "fetchPatch")     emit detailsResponse( status );
+
+    if (requestedAction == "stats")          emit statsResponse( status );
+
+}
+
+/*
 void patchExchange::finished( int id, bool error ) {
 
 	//cout << "Request " << id << " finished" << endl;
@@ -182,21 +213,21 @@ void patchExchange::finished( int id, bool error ) {
 		if ( !error )
 			emit connectionState( requestStatus() );
 		else
-			emit connectionState( qPrintable( http->errorString() ) );
+            emit connectionState( qPrintable( qnam->errorString() ) );
 	}
 
 	if ( id == vu_id ) {
 		if (!error) 
 			emit loginState( requestStatus() );
 		else
-			emit loginState( qPrintable( http->errorString() ) );
+            emit loginState( qPrintable( qnam->errorString() ) );
 	}
 	
 	if ( id == dd_id ) {
 		if (!error) 
 			emit dropdownData( requestStatus().split( "\n" ) );
 		//else
-		//	emit dropdownData( qPrintable( http->errorString() ) );
+        //	emit dropdownData( qPrintable( qnam->errorString() ) );
 	}
 	
 	if (id == ins_id ) {
@@ -212,19 +243,20 @@ void patchExchange::finished( int id, bool error ) {
 			//cout << "Query response: " << qPrintable( requestStatus() ) << endl;
 			emit queryResponse( requestStatus() );
 		//else
-		//	emit dropdownData( qPrintable( http->errorString() ) );
+        //	emit dropdownData( qPrintable( qnam->errorString() ) );
 	}
 	if ( id == details_id ) {
 		if (!error) 
 			//cout << "Query response: " << qPrintable( requestStatus() ) << endl;
 		emit detailsResponse( requestStatus() );
 		//else
-		//	emit dropdownData( qPrintable( http->errorString() ) );
+        //	emit dropdownData( qPrintable( qnam->errorString() ) );
 	}
 	if ( id == stats_id ) {
 		emit statsResponse( requestStatus() );
 	}
 }
+*/
 
 QString patchExchange::requestStatus() {
 

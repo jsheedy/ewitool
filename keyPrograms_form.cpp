@@ -79,7 +79,7 @@ void keyPrograms_form::printQuickPCs() {
   QPrinter *printer = new QPrinter();
   printer->setOrientation( QPrinter::Portrait );
   printer->setResolution( 600 );
-  printer->setOutputFormat( QPrinter::PostScriptFormat );
+  // printer->setOutputFormat( QPrinter::PostScriptFormat );
   
   QPrintDialog *dialog = new QPrintDialog( printer, this );
   dialog->setWindowTitle( tr( "Print EWI Quick Patch Changes" ) );

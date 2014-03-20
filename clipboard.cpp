@@ -282,9 +282,9 @@ void Clipboard::selectionChanged( ) {
 bool Clipboard::onClipboard( QString pname ) {
 	
 	if (clipboard_listWidget->findItems( pname, Qt::MatchExactly ).count() > 0)
-		return TRUE;
+        return true;
 	else
-		return FALSE;
+        return false;
 	
 }
 

@@ -2,7 +2,7 @@ TEMPLATE = app
 CONFIG += warn_on \
 		  thread \
           qt
-QT += network
+QT += network printsupport widgets
 TARGET = ../bin/ewitool
 SOURCES += main.cpp \
 mainwindow.cpp \

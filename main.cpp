@@ -43,9 +43,9 @@ int main(int argc, char *argv[])
 	QApplication app(argc, argv);
 	
 	// handle any arguments passed in
-	if ( app.argc() > 1 ) {
-		for (int arg = 1; arg<app.argc(); arg++) {
-			argStr = app.argv()[arg];
+    if ( argc > 1 ) {
+        for (int arg = 1; arg < argc; arg++) {
+            argStr = argv[arg];
 			if (argStr.compare( "--help" ) == 0) {
 				cout << "\nUsage: EWItool [options]\n\
 Options:\n\
@@ -55,7 +55,7 @@ Options:\n\
 For more information please visit http://code.google.com/p/ewitool/ \n";
 				exit(0);
 			}
-			if (argStr.compare( "--verbose" ) == 0) { main_midi_data->verboseMode = TRUE; continue; }
+            if (argStr.compare( "--verbose" ) == 0) { main_midi_data->verboseMode = true; continue; }
 		}
 	}
 #ifdef Q_WS_WIN

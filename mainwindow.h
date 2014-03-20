@@ -51,7 +51,7 @@ const int       KEYPATCH_TAB        = 4;
 class MainWindow: public QMainWindow, public Ui::MainWindow{
 Q_OBJECT
 	public:	
-		MainWindow( volatile midi_data *, QWidget * parent = 0, Qt::WFlags f = 0 );
+        MainWindow( volatile midi_data *, QWidget * parent = 0, Qt::WindowFlags f = 0 );
     	~MainWindow();
 	
 	private slots:
