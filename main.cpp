@@ -19,18 +19,15 @@
  ***************************************************************************/
 #include <QApplication>
 
-#include <iostream>
 using namespace std;
 
 #include "mainwindow.h"
 
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
 #include <windows.h>
 #endif
 				 
-//#ifndef Q_WS_WIN
 #include "midilistener.h"
-//#endif
 				 
 #include "midi_data.h"
 				 
@@ -58,7 +55,7 @@ For more information please visit http://code.google.com/p/ewitool/ \n";
             if (argStr.compare( "--verbose" ) == 0) { main_midi_data->verboseMode = true; continue; }
 		}
 	}
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
 	// if we're in win32 and user specifed verbose, then open a console for the messages
 	if (main_midi_data->verboseMode) {
 		AllocConsole();

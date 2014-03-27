@@ -58,7 +58,8 @@ const int   MIDI_TIMEOUT_MS         = 3000;
 const int	EWI_SOUNDBANK_MAX_HEADER_LENGTH = 0x450;	// looks safe from observation
 // below is the sequence which appears to start the real body of SQS files, there
 // seem to be various false BODYs before the main one we care about
-const char	EWI_SQS_BODY_START[]	= { 'B', 'O', 'D', 'Y', 0x00, 0x00, 0x50, 0x78, 0xf0, 0x47, 0x64, 0x7f, 0x00, 0x00 };
+//const char	EWI_SQS_BODY_START[]	= { 'B', 'O', 'D', 'Y', 0x00, 0x00, 0x50, 0x78, 0xf0, 0x47, 0x64, 0x7f, 0x00, 0x00 };
+const char	EWI_SQS_BODY_START[]	= { 'B', 'O', 'D', 'Y', 0, 0, '\x50', '\x78', '\xf0', '\x47', '\x64', '\x7f', 0, 0 };
 const int	EWI_SQS_MAX_HEADER_LENGTH = 0x1000;			// looks ok from observation
 
 /**
