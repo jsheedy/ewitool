@@ -39,13 +39,18 @@ HEADERS += mainwindow.h \
  midilistener.h \
  keyPrograms_form.h \
  ewi4000sQuickPC.h
-unix {
+
+unix:!macx {
     LIBS += -lasound
     DEFINES += __LINUX_ALSASEQ__ 
 }
 win32 {
     LIBS += -lwinmm
     DEFINES += __WINDOWS_MM__ 
+}
+macx {
+    LIBS += -framework CoreAudio -framework CoreMidi -framework CoreFoundation
+    DEFINES += __MACOSX_CORE__ 
 }
 
 FORMS += mainwindow.ui \
