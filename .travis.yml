@@ -7,8 +7,7 @@ compiler:
 before_install:
   - echo $LANG
   - echo $LC_ALL
-  - if [ $TRAVIS_OS_NAME == linux ]; then sudo apt-get update && sudo apt-get install -y qt5-qmake qtbase5-dev qtdeclarative5-dev; fi
-  - if [ $TRAVIS_OS_NAME == osx ]; then brew update && brew install qt5 llvm35 && brew link --force llvm35; fi
+  - if [ $TRAVIS_OS_NAME == linux ]; then sudo apt-add-repository ppa:ubuntu-sdk-team/ppa && sudo apt-get update && sudo apt-get install -y qt5-qmake qtbase5-dev qtdeclarative5-dev; fi
 
 before_script:
   - travis_retry bundle
@@ -22,5 +21,3 @@ script:
 
 os:
   - linux
-  - osx
-  - windows
