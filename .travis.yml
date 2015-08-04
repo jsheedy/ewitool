@@ -2,17 +2,11 @@ language: cpp
 
 compiler:
   - gcc
-  - clang
 
 before_install:
   - echo $LANG
   - echo $LC_ALL
   - if [ $TRAVIS_OS_NAME == linux ]; then sudo apt-add-repository ppa:ubuntu-sdk-team/ppa && sudo apt-get update && sudo apt-get install -y qt5-qmake qtbase5-dev qtdeclarative5-dev; fi
-
-before_script:
-  - travis_retry bundle
-  - if [ $TRAVIS_OS_NAME == linux ]; then travis_retry ./configure --llvm-config llvm-config-3.4; fi
-  - if [ $TRAVIS_OS_NAME == osx ]; then travis_retry ./configure; fi
 
 script: 
   - qmake -qt=qt5 -v
